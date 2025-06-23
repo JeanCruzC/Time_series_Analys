@@ -30,12 +30,12 @@ if file:
     orden_dias = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=orden_dias, ordered=True)
 
-    # ----- GRÁFICO 1: Interactivo con colores personalizados -----
+    # ----- GRÁFICO 1: Interactivo con scroll y colores -----
     st.subheader("📊 Gráfico 1: Tendencia Reales vs Planificados (Interactivo)")
     trend = df.groupby('fecha')[['planificados', 'reales']].sum().reset_index()
     trend_long = pd.melt(trend, id_vars='fecha', value_vars=['planificados', 'reales'],
                          var_name='Tipo', value_name='Volumen')
-    
+
     color_map = {
         'planificados': 'orange',
         'reales': 'blue'
@@ -54,12 +54,15 @@ if file:
         legend_title_text='Tipo de Contacto',
         xaxis_title='Fecha',
         yaxis_title='Volumen',
-        hovermode="x unified"
+        hovermode="x unified",
+        dragmode="pan",
+        xaxis=dict(fixedrange=False),
+        yaxis=dict(fixedrange=False)
     )
 
-    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True, config={"scrollZoom": True})
 
-    # ----- GRÁFICO 2: Desvío promedio por intervalo ordenado -----
+    # ----- GRÁFICO 2: Desvío por intervalo -----
     st.subheader("📉 Gráfico 2: Desvío Promedio por Intervalo")
     interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
     fig2, ax2 = plt.subplots(figsize=(12, 4))
@@ -70,7 +73,7 @@ if file:
     plt.xticks(rotation=45)
     st.pyplot(fig2)
 
-    # ----- GRÁFICO 3: Heatmap día - intervalo -----
+    # ----- GRÁFICO 3: Heatmap día-intervalo -----
     st.subheader("🔥 Gráfico 3: Heatmap Día - Intervalo")
     heatmap_data = df.pivot_table(index='intervalo', columns='dia_semana', values='desvio_%', aggfunc='mean')
     fig3, ax3 = plt.subplots(figsize=(10, 6))
@@ -78,7 +81,7 @@ if file:
     ax3.set_title("Heatmap % Desvío por Intervalo y Día de la Semana")
     st.pyplot(fig3)
 
-    # ----- PROYECCIÓN AJUSTES -----
+    # ----- PROYECCIÓN DE AJUSTES -----
     st.subheader("📆 Proyección Semana 23/06 al 29/06")
     ajustes = df.groupby(['dia_semana', 'intervalo'])['desvio_%'].mean().reset_index()
     ajustes['ajuste_sugerido'] = (ajustes['desvio_%'].round(2)) / 100
