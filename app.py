@@ -30,7 +30,7 @@ if file:
     orden_dias = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=orden_dias, ordered=True)
 
-    # ----- GRÁFICO 1: Interactivo con scroll y colores -----
+    # ----- GRÁFICO 1: Interactivo Plotly completo -----
     st.subheader("📊 Gráfico 1: Tendencia Reales vs Planificados (Interactivo)")
     trend = df.groupby('fecha')[['planificados', 'reales']].sum().reset_index()
     trend_long = pd.melt(trend, id_vars='fecha', value_vars=['planificados', 'reales'],
@@ -47,22 +47,37 @@ if file:
         y='Volumen',
         color='Tipo',
         color_discrete_map=color_map,
-        title="Contactos diarios"
+        title="Contactos diarios",
+        line_shape='linear'
     )
 
+    fig1.update_traces(line=dict(width=2))
+
     fig1.update_layout(
-        legend_title_text='Tipo de Contacto',
         xaxis_title='Fecha',
         yaxis_title='Volumen',
+        legend_title_text='Tipo de Contacto',
         hovermode="x unified",
         dragmode="pan",
-        xaxis=dict(fixedrange=False),
+        xaxis=dict(
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=7, label="7d", step="day", stepmode="backward"),
+                    dict(count=14, label="14d", step="day", stepmode="backward"),
+                    dict(count=1, label="1m", step="month", stepmode="backward"),
+                    dict(step="all", label="Todo")
+                ])
+            ),
+            rangeslider=dict(visible=True),
+            type="date",
+            fixedrange=False
+        ),
         yaxis=dict(fixedrange=False)
     )
 
     st.plotly_chart(fig1, use_container_width=True, config={"scrollZoom": True})
 
-    # ----- GRÁFICO 2: Desvío por intervalo -----
+    # ----- GRÁFICO 2: Desvío promedio por intervalo -----
     st.subheader("📉 Gráfico 2: Desvío Promedio por Intervalo")
     interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
     fig2, ax2 = plt.subplots(figsize=(12, 4))
