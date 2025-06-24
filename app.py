@@ -84,16 +84,26 @@ else:
 st.subheader("📋 Intervalos con mayor error")
 opcion = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
 errors = serie_continua.copy() if opcion == "Total" else serie_last.copy()
-errors['error_abs'] = np.abs(errors['reales'] - errors['planificados'])
-errors['MAPE'] = np.abs((errors['reales'] - errors['planificados']) / errors['planificados'].replace(0, np.nan)) * 100
+errors['error_abs'] = (errors['reales'] - errors['planificados']).abs()
+errors['MAPE'] = (errors['error_abs'] / errors['planificados'].replace(0, np.nan)) * 100
 
-# Tabla con columnas clave
-tab = errors.reset_index()[['_dt','planificados','reales','error_abs','MAPE']]
-tab['MAPE'] = tab['MAPE'].round(2).astype(str) + '%'
-st.markdown("**MAPE calculado como** `abs(reales - planificados) / planificados * 100`")
-st.dataframe(tab.sort_values('MAPE', ascending=False).head(10), use_container_width=True)
+# Construir tabla con columnas clave y formato adecuado
+tab = (
+    errors.reset_index()
+          [['_dt','planificados','reales','error_abs','MAPE']]
+    .assign(
+        MAPE=lambda df: df['MAPE'].map(lambda x: f"{x:.2f}%"),
+        error_abs=lambda df: df['error_abs'].astype(int)
+    )
+)
 
-# ─────────── 6. Heatmap de desvíos ───────────
+st.markdown("**MAPE** calculado como _abs(reales - planificados) / planificados × 100_.")
+st.dataframe(
+    tab.sort_values('MAPE', ascending=False).head(10),
+    use_container_width=True
+)
+
+# ─────────── 6. Heatmap de desvíos ─────────── Heatmap de desvíos ───────────
 st.subheader("🔥 Heatmap: Desvío % por Intervalo y Día de la Semana")
 heat = df.pivot_table(index='intervalo', columns='dia_semana', values='desvio_%', aggfunc='mean')
 fig3, ax3 = plt.subplots(figsize=(10,6))
