@@ -34,7 +34,6 @@ df['mes'] = df['fecha'].dt.month
 df['nombre_mes'] = df['fecha'].dt.strftime('%B')
 df['desvio'] = df['reales'] - df['planificados']
 df['desvio_%'] = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
-# Orden de días
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
 
@@ -44,52 +43,43 @@ serie_continua = df.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 2.2 Última semana ───────────
 ultima_sem = df['semana_iso'].max()
-_df_last = df[df['semana_iso']==ultima_sem].copy()
+_df_last = df[df['semana_iso'] == ultima_sem].copy()
 _df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 serie_last = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
-# ─────────── 3. Ajustes sugeridos con combinación ───────────
-st.subheader("📆 Ajustes sugeridos")
-semanas = sorted(df['semana_iso'].unique())
-sem_sel = st.selectbox("Selecciona Semana ISO para ajuste:", semanas, index=len(semanas)-1)
-k = st.slider("Número de semanas históricas para suavizar", 1, min(4, len(semanas)-1), 3)
-alpha = st.slider("Peso para la semana seleccionada", 0.0, 1.0, 0.6)
+# ─────────── 3. Ajustes sugeridos para la próxima semana ───────────
+proxima_sem = ultima_sem + 1
+ajustes = (
+    _df_last
+    .groupby(['dia_semana','intervalo'])['desvio_%']
+    .mean()
+    .reset_index()
+)
+ajustes['ajuste_sugerido'] = (1 - ajustes['desvio_%'] / 100).round(4)
 
-# desviación de la semana seleccionada
-df_cur = df[df['semana_iso']==sem_sel]
-cur = df_cur.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index().rename(columns={'desvio_%':'desvio_cur'})
+st.subheader(f"📆 Ajustes sugeridos para Semana ISO {proxima_sem}")
+st.write(f"(basados en la semana {ultima_sem})")
+st.dataframe(ajustes, use_container_width=True)
 
-# promedio de las k semanas anteriores
-prev_weeks = [w for w in semanas if w < sem_sel][-k:]
-df_prev = df[df['semana_iso'].isin(prev_weeks)]
-prev = df_prev.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index().rename(columns={'desvio_%':'desvio_prev'})
-
-# combinar y calcular ajuste
-aj = pd.merge(cur, prev, on=['dia_semana','intervalo'], how='left').fillna(0)
-aj['desvio_comb'] = alpha * aj['desvio_cur'] + (1-alpha) * aj['desvio_prev']
-aj['ajuste_sugerido'] = (1 - aj['desvio_comb']/100).round(4)
-
-st.write(f"**Semana ISO {sem_sel}**, usando promedio de semanas {prev_weeks}")
-st.dataframe(aj[['dia_semana','intervalo','desvio_cur','desvio_prev','desvio_comb','ajuste_sugerido']], use_container_width=True)
-csv_aj = aj.to_csv(index=False).encode('utf-8')
+csv_aj = ajustes.to_csv(index=False).encode('utf-8')
 st.download_button(
     "📥 Descargar ajustes (.csv)",
     data=csv_aj,
-    file_name=f"ajustes_semana_{sem_sel}.csv",
+    file_name=f"ajustes_semana_{proxima_sem}.csv",
     mime="text/csv"
 )
 
 # ─────────── 4. KPIs de Error ───────────
 st.subheader("🔢 KPIs de Planificación vs. Realidad")
-y_true_all, y_pred_all = serie_continua['reales'], serie_continua['planificados']
-mae_all  = mean_absolute_error(y_true_all, y_pred_all)
-rmse_all = np.sqrt(mean_squared_error(y_true_all, y_pred_all))
-mape_all = np.mean(np.abs((y_true_all - y_pred_all) / y_true_all.replace(0, np.nan))) * 100
+y_t_all, y_p_all = serie_continua['reales'], serie_continua['planificados']
+mae_all  = mean_absolute_error(y_t_all, y_p_all)
+rmse_all = np.sqrt(mean_squared_error(y_t_all, y_p_all))
+mape_all = np.mean(np.abs((y_t_all - y_p_all) / y_t_all.replace(0, np.nan))) * 100
 
-y_true_w, y_pred_w = serie_last['reales'], serie_last['planificados']
-mae_w  = mean_absolute_error(y_true_w, y_pred_w)
-rmse_w = np.sqrt(mean_squared_error(y_true_w, y_pred_w))
-mape_w = np.mean(np.abs((y_true_w - y_pred_w) / y_true_w.replace(0, np.nan))) * 100
+y_t_w, y_p_w = serie_last['reales'], serie_last['planificados']
+mae_w  = mean_absolute_error(y_t_w, y_p_w)
+rmse_w = np.sqrt(mean_squared_error(y_t_w, y_p_w))
+mape_w = np.mean(np.abs((y_t_w - y_p_w) / y_t_w.replace(0, np.nan))) * 100
 
 st.markdown(
     f"- **MAE:** Total={mae_all:.0f}, Semana={mae_w:.0f}  \n"
@@ -107,19 +97,19 @@ else:
 
 # ─────────── 5. Tabla de errores por intervalo ───────────
 st.subheader("📋 Intervalos con mayor error")
-op = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
-errors = serie_continua.copy() if op=="Total" else serie_last.copy()
+opt = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
+errors = serie_continua.copy() if opt=="Total" else serie_last.copy()
 errors['error_abs'] = (errors['reales'] - errors['planificados']).abs()
 errors['MAPE'] = (errors['error_abs'] / errors['planificados'].replace(0, np.nan)) * 100
 
 tab = (
     errors.reset_index()[['_dt','planificados','reales','error_abs','MAPE']]
     .assign(
-        MAPE=lambda d: d['MAPE'].map(lambda x: f"{x:.2f}%"),
-        error_abs=lambda d: d['error_abs'].astype(int)
+        error_abs=lambda d: d['error_abs'].astype(int),
+        MAPE=lambda d: d['MAPE'].map(lambda x: f"{x:.2f}%")
     )
 )
-st.markdown("**MAPE** = |reales - planificados| / planificados × 100")
+st.markdown("**MAPE** = |reales − planificados| / planificados × 100")
 st.dataframe(tab.sort_values('MAPE', ascending=False).head(10), use_container_width=True)
 
 # ─────────── 6. Heatmap de desvíos ───────────
@@ -133,7 +123,8 @@ st.pyplot(fig3)
 # ─────────── 7. Vistas interactivas con anomalías ───────────
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ['Día','Semana','Mes'])
-if vista=='Día':
+
+if vista == 'Día':
     fig = px.line(
         serie_continua.reset_index(), x='_dt', y=['planificados','reales'],
         title='📅 Contactos Día',
@@ -157,7 +148,7 @@ if vista=='Día':
     )
     st.plotly_chart(fig_anom, use_container_width=True)
 
-elif vista=='Semana':
+elif vista == 'Semana':
     fig = px.line(
         serie_last.reset_index(), x='_dt', y=['planificados','reales'],
         title=f'📆 Contactos Semana ISO {ultima_sem}',
