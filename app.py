@@ -152,12 +152,6 @@ else:
     # Promedio diario por hora para cada mes
     daily_m = df.assign(dia=df['fecha'].dt.date).groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']].sum().reset_index()
     monthly_avg = daily_m.groupby(['nombre_mes','intervalo'])[['planificados','reales']].mean().reset_index()
-    # Serie continua para anomaly detection
-    monthly_avg['hora_str'] = monthly_avg['intervalo'].astype(str).str.slice(0,5)
-    ts = pd.Series(
-        monthly_avg['planificados'].values,
-        index=pd.to_datetime(monthly_avg['hora_str'], format='%H:%M')
-    )
     fig = px.line(
         monthly_avg, x='intervalo', y=['planificados','reales'],
         facet_col='nombre_mes', facet_col_wrap=3, title='📊 Curva Horaria Mes',
@@ -165,13 +159,3 @@ else:
         color_discrete_map={'planificados':'orange','reales':'blue'}
     )
     st.plotly_chart(fig, use_container_width=True)
-    # Anomalías mensual
-    decomp = seasonal_decompose(ts, model='additive', period=24)
-    resid = decomp.resid.dropna(); sigma = resid.std(); anoms = resid[np.abs(resid) > 3*sigma]
-    fig_anom = px.line(
-        ts.reset_index(), x='index', y=0, title='🔴 Anomalías Mes',
-        labels={'index':'Hora','0':'Planificados'},
-        color_discrete_map={0:'orange'}
-    )
-    fig_anom.add_scatter(x=anoms.index, y=ts.loc[anoms.index], mode='markers', marker=dict(color='red'), name='Anom')
-    st.plotly_chart(fig_anom, use_container_width=True)
