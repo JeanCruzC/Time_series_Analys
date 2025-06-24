@@ -44,63 +44,59 @@ if vista == "Día":
     # combinar fecha + hora para eje X continuo
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
     ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
-    x = 'dt'
-    title = "📅 Contactos por Intervalo (Fecha y Hora)"
     fig = px.line(
         ag, x='dt', y=['planificados','reales'],
         labels={'value':'Volumen','dt':'Fecha y Hora','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title=title, line_shape='linear'
+        title="📅 Contactos por Intervalo (Fecha y Hora)",
+        line_shape='linear'
     )
+    fig.update_traces(line=dict(width=2))
+    # eje X con fecha y hora en líneas distintas
     fig.update_xaxes(
         title='Fecha y Hora',
-        tickformat='%Y-%m-%d\n%H:%M',
-        tickangle=45,
+        tickformat='%Y-%m-%d<br>%H:%M',
+        tickangle=0,
+        ticklabelmode="period",
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
             dict(count=6,  label="6h",  step="hour",  stepmode="backward"),
             dict(count=12, label="12h", step="hour",  stepmode="backward"),
             dict(count=1,  label="1d",  step="day",   stepmode="backward"),
             dict(step="all", label="Todo")
-        ])
+        ]),
+        type="date",
+        fixedrange=False
     )
 elif vista == "Semana":
     ag = (df.groupby(['semana_iso','nombre_mes'])[['planificados','reales']]
-            .sum()
-            .reset_index())
+            .sum().reset_index())
     ag['etiqueta'] = ag['nombre_mes'] + " – Sem " + ag['semana_iso'].astype(str)
-    x = 'etiqueta'
-    title = "📆 Contactos por Semana ISO"
     fig = px.line(
-        ag, x=x, y=['planificados','reales'],
-        labels={'value':'Volumen', x:'Semana','variable':'Tipo'},
+        ag, x='etiqueta', y=['planificados','reales'],
+        labels={'value':'Volumen','etiqueta':'Semana','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title=title
+        title="📆 Contactos por Semana ISO"
     )
     fig.update_xaxes(tickangle=-45)
 else:  # Mes
     ag = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
     ag['etiqueta'] = ag['nombre_mes']
-    x = 'etiqueta'
-    title = "📊 Contactos por Mes"
     fig = px.line(
-        ag, x=x, y=['planificados','reales'],
-        labels={'value':'Volumen', x:'Mes','variable':'Tipo'},
+        ag, x='etiqueta', y=['planificados','reales'],
+        labels={'value':'Volumen','etiqueta':'Mes','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title=title
+        title="📊 Contactos por Mes"
     )
     fig.update_xaxes(tickangle=-45)
 
-# estilo común
-fig.update_traces(line=dict(width=2))
+# configuración común
 fig.update_layout(
     hovermode="x unified",
     dragmode="pan",
     yaxis=dict(fixedrange=False)
 )
-
 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
-
 
 # 4. Análisis adicional (idéntico a tu pedido)
 st.subheader("📉 Desvío Promedio por Intervalo")
