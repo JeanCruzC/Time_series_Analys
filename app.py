@@ -150,7 +150,7 @@ if vista == 'Día':
         serie_continua.reset_index(), x='_dt', y=['planificados', 'reales'],
         title='📅 Contactos Día',
         labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
-        color_discrete_map={'planificados':'yellow','reales':'blue'}
+        color_discrete_map={'planificados':'red','reales':'blue'}
     )
     fig.update_layout(hovermode="x unified", dragmode="zoom")
     fig.update_xaxes(rangeslider_visible=True)
