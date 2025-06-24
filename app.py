@@ -9,43 +9,36 @@ import datetime
 st.set_page_config(layout="wide")
 st.title("📈 Análisis de Contactos y Ajustes por Intervalo – Día / Semana / Mes")
 
-# ───────────────── 1. Carga de datos ─────────────────
+# ─────────────── 1. Carga ───────────────
 file = st.file_uploader("📂 Carga tu archivo histórico (CSV o Excel)", type=["csv","xlsx"])
 if not file:
     st.stop()
-
 df = pd.read_excel(file) if file.name.endswith("xlsx") else pd.read_csv(file)
 df.columns = df.columns.str.strip().str.lower()
 df = df.rename(columns={
-    'fecha': 'fecha',
-    'tramo': 'intervalo',
-    'planif. contactos': 'planificados',
-    'contactos': 'reales'
+    'fecha':'fecha',
+    'tramo':'intervalo',
+    'planif. contactos':'planificados',
+    'contactos':'reales'
 })
 
-# ───────────────── 2. Preprocesamiento ─────────────────
+# ─────────────── 2. Preprocesamiento ───────────────
 df['fecha']      = pd.to_datetime(df['fecha'])
 df['intervalo']  = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
-df['hora_str']   = df['intervalo'].astype(str).str[:5]  # "HH:MM"
+df['hora_str']   = df['intervalo'].astype(str).str[:5]
 df['dt']         = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 df['semana_iso'] = df['fecha'].dt.isocalendar().week
-df['anno']       = df['fecha'].dt.isocalendar().year
-df['monday']     = df['fecha'] - pd.to_timedelta(df['fecha'].dt.weekday, unit='d')
 df['nombre_mes'] = df['fecha'].dt.strftime('%B')
 df['desvio_%']   = (df['reales'] - df['planificados']) / df['planificados'].replace(0, np.nan) * 100
 
-# Para el heatmap
+# Para heatmap
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-df['dia_semana'] = pd.Categorical(
-    df['fecha'].dt.day_name(),
-    categories=dias_orden,
-    ordered=True
-)
+df['dia_semana'] = pd.Categorical(df['fecha'].dt.day_name(),
+                                  categories=dias_orden, ordered=True)
 
-# Mantener copia para análisis extra
-df_main = df.copy()
+df_main = df.copy()  # para el análisis extra
 
-# ───────────────── 3. Vista interactiva ─────────────────
+# ─────────────── 3. Vista interactiva ───────────────
 vista = st.selectbox("🔎 Ver por:", ["Día","Semana","Mes"])
 
 if vista == "Día":
@@ -73,30 +66,38 @@ if vista == "Día":
                     config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
 elif vista == "Semana":
-    st.subheader("📆 Curva horaria de una ISO‐week")
+    st.subheader("📆 Curva horaria: pequeñas vistas por Semana")
 
-    semanas = sorted(df['semana_iso'].unique())
-    sel = st.selectbox("Elige Semana ISO:", semanas)
-
-    # Filtrar solo la semana seleccionada y agrupar por hora_str
-    wk = (
-        df[df['semana_iso']==sel]
-        .groupby('hora_str')[['planificados','reales']]
-        .sum()
-        .reset_index()
+    # 1) Agrego por semana + hora
+    week_hour = (
+        df.groupby(['semana_iso','hora_str'])
+          [['planificados','reales']]
+          .sum()
+          .reset_index()
     )
 
+    # 2) Paso a formato largo
+    wh_long = week_hour.melt(
+        id_vars=['semana_iso','hora_str'],
+        value_vars=['planificados','reales'],
+        var_name='Tipo', value_name='Volumen'
+    )
+
+    # 3) Small multiples: un facet por cada semana_iso
     fig_wk = px.line(
-        wk, x='hora_str', y=['planificados','reales'],
-        labels={'hora_str':'Hora del Día','value':'Volumen','variable':'Tipo'},
+        wh_long,
+        x='hora_str', y='Volumen',
+        color='Tipo',
+        facet_col='semana_iso', facet_col_wrap=4,
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title=f"Semana {sel}: Planificados vs Reales"
+        labels={'hora_str':'Hora del Día','semana_iso':'Semana ISO'},
+        title="Curva horaria por Semana (00:00–23:30)"
     )
     fig_wk.update_traces(line=dict(width=2))
-    fig_wk.update_xaxes(tickangle=45)
-    fig_wk.update_layout(hovermode="x unified", dragmode="zoom")
-    st.plotly_chart(fig_wk, use_container_width=True,
-                    config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
+    fig_wk.update_xaxes(matches=None, tickangle=45)   # cada facet con su propio eje X
+    fig_wk.update_yaxes(matches='y')                  # todos comparten la misma escala Y
+    fig_wk.update_layout(hovermode="x unified", height=600)
+    st.plotly_chart(fig_wk, use_container_width=True)
 
 else:
     st.subheader("📊 Curva horaria agregada por Mes")
@@ -111,7 +112,7 @@ else:
         fig3.update_xaxes(tickangle=45)
         st.plotly_chart(fig3, use_container_width=True)
 
-# ───────────────── 4. Análisis adicional ─────────────────
+# ─────────────── 4. Análisis adicional ───────────────
 st.subheader("📉 Desvío Promedio por Intervalo")
 int_avg = df_main.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig4, ax4 = plt.subplots(figsize=(12,4))
@@ -123,12 +124,6 @@ plt.xticks(rotation=45)
 st.pyplot(fig4)
 
 st.subheader("🔥 Heatmap: Desvío por Día de la Semana y Intervalo")
-# Reaseguramos la columna dia_semana
-df_main['dia_semana'] = pd.Categorical(
-    df_main['fecha'].dt.day_name(),
-    categories=dias_orden,
-    ordered=True
-)
 heat = df_main.pivot_table(
     values='desvio_%', index='intervalo', columns='dia_semana', aggfunc='mean'
 )
