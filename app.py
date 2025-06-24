@@ -42,10 +42,10 @@ df['_dt'] = df.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), 
 serie_continua = df.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 2.2 Última semana ───────────
-ultima_sem   = df['semana_iso'].max()
-_df_last     = df[df['semana_iso']==ultima_sem].copy()
+ultima_sem     = df['semana_iso'].max()
+_df_last       = df[df['semana_iso']==ultima_sem].copy()
 _df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
-serie_last   = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
+serie_last     = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 3. Mejor práctica: combinación ponderada ───────────
 # Parámetros
@@ -63,9 +63,8 @@ cur = (
 )
 
 # 3.2 promedio desvío % de N semanas anteriores
-prev_weeks_raw = sorted(df['semana_iso'].unique())
-prev_weeks = [int(w) for w in prev_weeks_raw if w < ultima_sem][-N:]
-df_prev     = df[df['semana_iso'].isin(prev_weeks)]
+prev_weeks = [w for w in sorted(df['semana_iso'].unique()) if w<ultima_sem][-N:]
+df_prev    = df[df['semana_iso'].isin(prev_weeks)]
 prev = (
     df_prev
     .groupby(['dia_semana','intervalo'])['desvio_%']
@@ -77,11 +76,10 @@ prev = (
 # 3.3 combinación ponderada
 aj = pd.merge(cur, prev, on=['dia_semana','intervalo'], how='left')
 aj['desvio_prev']     = aj['desvio_prev'].fillna(0)
-aj['desvio_comb']     = alpha * aj['desvio_cur'] + (1-alpha) * aj['desvio_prev']
-aj['ajuste_sugerido'] = (1 + aj['desvio_comb']/100).round(4)
-aj['ajuste_sugerido'] = aj['ajuste_sugerido'].map(lambda x: f"{x*100:.0f}%")
+aj['desvio_comb']     = alpha*aj['desvio_cur'] + (1-alpha)*aj['desvio_prev']
+aj['ajuste_sugerido'] = (1 + aj['desvio_comb']/100).round(4).map(lambda x: f"{x*100:.0f}%")
 
-# ─────────── 3.4 Cabecera explicativa y tabla ───────────
+# 3.4 Mostrar tabla de ajustes
 st.subheader(f"📆 Ajustes sugeridos para Semana ISO {proxima_sem}")
 st.markdown(
     f"**Combinación ponderada:** {int(alpha*100)}% desvío de la última semana "
@@ -91,34 +89,30 @@ st.markdown("""
 **Columnas de la tabla**  
 - **dia_semana**: día de la semana (Monday…Sunday)  
 - **intervalo**: franja horaria  
-- **desvio_cur**: desvío % promedio de la última semana (semana ISO """ + str(ultima_sem) + """)  
-- **desvio_prev**: desvío % promedio de las semanas históricas de referencia """ + str(prev_weeks) + """  
-- **desvio_comb**: desvío combinado = 0.7·desvio_cur + 0.3·desvio_prev  
-- **ajuste_sugerido**: factor de ajuste a aplicar a la próxima planificación (100% + desvio_comb)
-""")
-st.dataframe(
-    aj[['dia_semana','intervalo','desvio_cur','desvio_prev','desvio_comb','ajuste_sugerido']],
-    use_container_width=True
-)
-csv_aj = aj.to_csv(index=False).encode('utf-8')
+- **desvio_cur**: desvío % promedio de la última semana (semana ISO """ + str(ultima_sem)+""")  
+- **desvio_prev**: desvío % promedio de las semanas históricas de referencia """+str(prev_weeks)+"""  
+- **desvio_comb**: combinación = 0.7·desvio_cur + 0.3·desvio_prev  
+- **ajuste_sugerido**: factor (100% + desvio_comb)""")
+st.dataframe(aj[['dia_semana','intervalo','desvio_cur','desvio_prev','desvio_comb','ajuste_sugerido']],
+             use_container_width=True)
 st.download_button(
     "📥 Descargar ajustes (.csv)",
-    data=csv_aj,
+    data=aj.to_csv(index=False).encode('utf-8'),
     file_name=f"ajustes_semana_{proxima_sem}.csv",
     mime="text/csv"
 )
 
 # ─────────── 4. KPIs de Error ───────────
 st.subheader("🔢 KPIs de Planificación vs. Realidad")
-y_true_all, y_pred_all = serie_continua['reales'], serie_continua['planificados']
-mae_all  = mean_absolute_error(y_true_all, y_pred_all)
-rmse_all = np.sqrt(mean_squared_error(y_true_all, y_pred_all))
-mape_all = np.mean(np.abs((y_true_all - y_pred_all) / y_true_all.replace(0, np.nan))) * 100
+y_t_all, y_p_all = serie_continua['reales'], serie_continua['planificados']
+mae_all  = mean_absolute_error(y_t_all, y_p_all)
+rmse_all = np.sqrt(mean_squared_error(y_t_all, y_p_all))
+mape_all = np.mean(np.abs((y_t_all - y_p_all) / y_t_all.replace(0, np.nan))) * 100
 
-y_true_w, y_pred_w = serie_last['reales'], serie_last['planificados']
-mae_w  = mean_absolute_error(y_true_w, y_pred_w)
-rmse_w = np.sqrt(mean_squared_error(y_true_w, y_pred_w))
-mape_w = np.mean(np.abs((y_true_w - y_pred_w) / y_true_w.replace(0, np.nan))) * 100
+y_t_w, y_p_w = serie_last['reales'], serie_last['planificados']
+mae_w  = mean_absolute_error(y_t_w, y_p_w)
+rmse_w = np.sqrt(mean_squared_error(y_t_w, y_p_w))
+mape_w = np.mean(np.abs((y_t_w - y_p_w) / y_t_w.replace(0, np.nan))) * 100
 
 st.markdown(
     f"- **MAE:** Total={mae_all:.0f}, Semana={mae_w:.0f}  \n"
@@ -137,9 +131,9 @@ else:
 # ─────────── 5. Tabla de errores por intervalo ───────────
 st.subheader("📋 Intervalos con mayor error")
 opt = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
-errors = serie_continua.copy() if opt=="Total" else serie_last.copy()
+errors = (serie_continua if opt=="Total" else serie_last).copy()
 errors['error_abs'] = (errors['reales'] - errors['planificados']).abs()
-errors['MAPE']      = (errors['error_abs'] / errors['planificados'].replace(0, np.nan)) * 100
+errors['MAPE']      = (errors['error_abs'] / errors['planificados'].replace(0, np.nan))*100
 
 tab = (
     errors.reset_index()[['_dt','planificados','reales','error_abs','MAPE']]
@@ -166,52 +160,25 @@ vista = st.selectbox("Ver por:", ['Día','Semana','Mes'])
 if vista == 'Día':
     fig = px.line(
         serie_continua.reset_index(), x='_dt', y=['planificados','reales'],
-        title='📅 Contactos Día',
+        title='📅 Contactos (toda la serie)',
         labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'}
     )
     fig.update_layout(hovermode="x unified", dragmode="zoom")
     fig.update_xaxes(rangeslider_visible=True)
     st.plotly_chart(fig, use_container_width=True)
-
-    decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=48)
-    resid = decomp.resid.dropna()
-    anoms = resid[np.abs(resid) > 3*resid.std()]
-    fig_anom = px.line(
-        serie_continua.reset_index(), x='_dt', y='planificados',
-        title='🔴 Anomalías Día',
-        color_discrete_map={'planificados':'orange'}
-    )
-    fig_anom.add_scatter(
-        x=anoms.index, y=serie_continua.loc[anoms.index,'planificados'],
-        mode='markers', marker=dict(color='red'), name='Anom'
-    )
-    st.plotly_chart(fig_anom, use_container_width=True)
 
 elif vista == 'Semana':
+    # --- AQUÍ SE CAMBIÓ: ahora mostramos toda la serie histórica, no solo la última ---
     fig = px.line(
-        serie_last.reset_index(), x='_dt', y=['planificados','reales'],
-        title=f'📆 Contactos Semana ISO {ultima_sem}',
+        serie_continua.reset_index(), x='_dt', y=['planificados','reales'],
+        title='📆 Contactos por Semana (todas las semanas)',
         labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'}
     )
     fig.update_layout(hovermode="x unified", dragmode="zoom")
     fig.update_xaxes(rangeslider_visible=True)
     st.plotly_chart(fig, use_container_width=True)
-
-    decomp = seasonal_decompose(serie_last['planificados'], model='additive', period=48)
-    resid = decomp.resid.dropna()
-    anoms = resid[np.abs(resid) > 3*resid.std()]
-    fig_anom = px.line(
-        serie_last.reset_index(), x='_dt', y='planificados',
-        title='🔴 Anomalías Semana',
-        color_discrete_map={'planificados':'orange'}
-    )
-    fig_anom.add_scatter(
-        x=anoms.index, y=serie_last.loc[anoms.index,'planificados'],
-        mode='markers', marker=dict(color='red'), name='Anom'
-    )
-    st.plotly_chart(fig_anom, use_container_width=True)
 
 else:  # Mes
     daily_m = (
