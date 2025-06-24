@@ -163,7 +163,7 @@ if vista == 'Día':
         serie_continua.reset_index(), x='_dt', y='planificados',
         title='🔴 Anomalías Día',
         labels={'_dt':'Fecha y Hora','planificados':'Planificados'},
-        color_discrete_map={'planificados':'yellow'}
+        color_discrete_map={'planificados':'red'}
     )
     fig_anom.add_scatter(
         x=anoms.index, y=serie_continua.loc[anoms.index,'planificados'],
@@ -179,7 +179,7 @@ elif vista == 'Semana':
         animation_frame='semana_iso', animation_group='Tipo',
         labels={'intervalo':'Hora','semana_iso':'Semana ISO','Volumen':'Contactos','Tipo':'Tipo'},
         title="📆 Curvas horarias por Semana",
-        color_discrete_map={'planificados':'yellow','reales':'blue'}
+        color_discrete_map={'planificados':'red','reales':'blue'}
     )
     fig_week.update_layout(hovermode="x unified")
     st.plotly_chart(fig_week, use_container_width=True)
@@ -191,7 +191,7 @@ elif vista == 'Semana':
         serie_last.reset_index(), x='_dt', y='planificados',
         title='🔴 Anomalías Semana',
         labels={'_dt':'Fecha y Hora','planificados':'Planificados'},
-        color_discrete_map={'planificados':'yellow'}
+        color_discrete_map={'planificados':'red'}
     )
     fig_anom_w.add_scatter(
         x=anoms_w.index, y=serie_last.loc[anoms_w.index,'planificados'],
@@ -208,7 +208,7 @@ else:  # Mes
         facet_col='nombre_mes', facet_col_wrap=3,
         title='📊 Curva horaria promedio diario por Mes',
         labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo'},
-        color_discrete_map={'planificados':'yellow','reales':'blue'}
+        color_discrete_map={'planificados':'red','reales':'blue'}
     )
     fig.update_layout(hovermode="x unified", showlegend=False)
     st.plotly_chart(fig, use_container_width=True)
