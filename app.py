@@ -19,7 +19,7 @@ if not file:
 
 df = pd.read_excel(file) if file.name.endswith("xlsx") else pd.read_csv(file)
 
-# ─────────── 2. Preprocesamiento ┄───────────
+# ─────────── 2. Preprocesamiento ───────────
 df.columns = df.columns.str.strip().str.lower()
 df = df.rename(columns={
     'fecha': 'fecha', 'tramo': 'intervalo',
@@ -46,12 +46,12 @@ serie_continua = df.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 2.2 Última semana ───────────
 ultima_sem = df['semana_iso'].max()
-df_last = df[df['semana_iso'] == ultima_sem].copy()
-df_last['_dt'] = df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
-serie_last = df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
+_df_last = df[df['semana_iso'] == ultima_sem].copy()
+_df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
+serie_last = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 3. Ajustes sugeridos ───────────
-ajustes = df_last.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
+ajustes = _df_last.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
 ajustes['ajuste_sugerido'] = ajustes['desvio_%'].round(2) / 100
 st.subheader(f"📆 Ajustes sugeridos - Semana ISO {ultima_sem}")
 st.dataframe(ajustes, use_container_width=True)
@@ -72,7 +72,6 @@ st.markdown(
     f"- **MAE:** Total={mae_all:.0f}, Semana={mae_w:.0f}  \\n- **RMSE:** Total={rmse_all:.0f}, Semana={rmse_w:.0f}  \\n- **MAPE:** Total={mape_all:.2f}%, Semana={mape_w:.2f}%"
 )
 
-# Recomendaciones
 st.subheader("💡 Recomendaciones")
 if mape_all > 20:
     st.warning("MAPE global >20%: revisar intervalos con mayor desviación.")
@@ -87,15 +86,17 @@ opcion = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
 errors = serie_continua.copy() if opcion == "Total" else serie_last.copy()
 errors['error_abs'] = np.abs(errors['reales'] - errors['planificados'])
 errors['MAPE'] = np.abs((errors['reales'] - errors['planificados']) / errors['planificados'].replace(0, np.nan)) * 100
-errors_tab = (
-    errors.reset_index()
-          .groupby('_dt')[['error_abs','MAPE']]
-          .mean()
-          .reset_index()
-)
+
+# Construir tabla con planificados, reales, error y MAPE
+errors_tab = errors.reset_index()[['_dt','planificados','reales','error_abs','MAPE']]
 # Formatear MAPE como porcentaje con dos decimales
 errors_tab['MAPE'] = errors_tab['MAPE'].round(2).astype(str) + '%'
-st.dataframe(errors_tab.sort_values('MAPE', ascending=False).head(10))
+# Explicación de cálculo
+st.markdown("**MAPE calculado como** `abs(reales - planificados) / planificados * 100`")
+st.dataframe(
+    errors_tab.sort_values('MAPE', ascending=False).head(10),
+    use_container_width=True
+)
 
 # ─────────── 6. Heatmap de desvíos ───────────
 st.subheader("🔥 Heatmap: Desvío % por Intervalo y Día de la Semana")
