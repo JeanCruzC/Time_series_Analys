@@ -41,8 +41,10 @@ st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día", "Semana", "Mes"])
 
 if vista == "Día":
+    # Combina fecha+hora para eje X
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
     ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
+
     fig = px.line(
         ag, x='dt', y=['planificados','reales'],
         labels={'value':'Volumen','dt':'Fecha y Hora','variable':'Tipo'},
@@ -51,11 +53,12 @@ if vista == "Día":
         line_shape='linear'
     )
     fig.update_traces(line=dict(width=2))
+
+    # Eje X con salto de línea fecha/hora, selector y slider
     fig.update_xaxes(
         title='Fecha y Hora',
         tickformat='%Y-%m-%d<br>%H:%M',
         tickangle=0,
-        ticklabelmode="period",
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
             dict(count=6,  label="6h",  step="hour",  stepmode="backward"),
@@ -66,38 +69,41 @@ if vista == "Día":
         type="date",
         fixedrange=False
     )
-elif vista == "Semana":
-    ag = (df.groupby(['semana_iso','nombre_mes'])[['planificados','reales']]
-            .sum().reset_index())
-    ag['etiqueta'] = ag['nombre_mes'] + " – Sem " + ag['semana_iso'].astype(str)
+
+    # **Importante**: usar dragmode="zoom" para que al box-zoom la Y se reajuste
+    fig.update_layout(
+        hovermode="x unified",
+        dragmode="zoom",
+        yaxis=dict(fixedrange=False, autorange=True)
+    )
+
+else:
+    if vista == "Semana":
+        ag = (df.groupby(['semana_iso','nombre_mes'])[['planificados','reales']]
+                .sum().reset_index())
+        ag['etiqueta'] = ag['nombre_mes'] + " – Sem " + ag['semana_iso'].astype(str)
+        x = 'etiqueta'
+        title = "📆 Contactos por Semana ISO"
+    else:  # Mes
+        ag = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
+        ag['etiqueta'] = ag['nombre_mes']
+        x = 'etiqueta'
+        title = "📊 Contactos por Mes"
+
     fig = px.line(
         ag, x='etiqueta', y=['planificados','reales'],
-        labels={'value':'Volumen','etiqueta':'Semana','variable':'Tipo'},
+        labels={'value':'Volumen','etiqueta':('Semana' if vista=="Semana" else 'Mes'),'variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📆 Contactos por Semana ISO"
+        title=title
     )
-    fig.update_xaxes(tickangle=-45)
-else:  # Mes
-    ag = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
-    ag['etiqueta'] = ag['nombre_mes']
-    fig = px.line(
-        ag, x='etiqueta', y=['planificados','reales'],
-        labels={'value':'Volumen','etiqueta':'Mes','variable':'Tipo'},
-        color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📊 Contactos por Mes"
-    )
+    fig.update_traces(line=dict(width=2))
+    fig.update_layout(hovermode="x unified", dragmode="zoom", yaxis=dict(fixedrange=False, autorange=True))
     fig.update_xaxes(tickangle=-45)
 
-# 4. Ajustes de layout y autorange
-fig.update_traces(line=dict(width=2))
-fig.update_layout(
-    hovermode="x unified",
-    dragmode="pan",
-    yaxis=dict(fixedrange=False, autorange=True)
-)
+# Mostrar gráfico principal
 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
-# 5. Análisis adicional
+# 4. Análisis adicional (sin cambios)
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig2, ax2 = plt.subplots(figsize=(12,4))
@@ -108,7 +114,7 @@ ax2.set_title("Promedio de Desvío % por Intervalo")
 plt.xticks(rotation=45)
 st.pyplot(fig2)
 
-st.subheader("🔥 Heatmap: Desvío por Día de la Semana y Intervalo")
+st.subheader("🔥 Heatmap: Desvío por Día y Intervalo")
 heat = df.pivot_table(values='desvio_%', index='intervalo', columns='dia_semana', aggfunc='mean')
 fig3, ax3 = plt.subplots(figsize=(10,6))
 sns.heatmap(heat, cmap="coolwarm", center=0, ax=ax3)
@@ -121,7 +127,6 @@ aj['ajuste_sugerido'] = aj['desvio_%'].round(2) / 100
 aj['semana_obj'] = "2025-06-23 al 2025-06-29"
 aj = aj[['semana_obj','dia_semana','intervalo','ajuste_sugerido']]
 st.dataframe(aj, use_container_width=True)
-
 st.download_button(
     "📥 Descargar ajustes (.csv)",
     data=aj.to_csv(index=False),
