@@ -15,7 +15,10 @@ file = st.file_uploader("📂 Carga tu archivo histórico (CSV o Excel)", type=[
 if not file:
     st.stop()
 
-df = pd.read_excel(file) if file.name.endswith("xlsx") else pd.read_csv(file)
+if file.name.endswith("xlsx"):
+    df = pd.read_excel(file)
+else:
+    df = pd.read_csv(file)
 
 # ─────────── 2. Preprocesamiento ───────────
 df.columns = df.columns.str.strip().str.lower()
@@ -44,15 +47,15 @@ st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día","Semana","Mes"])
 
 # ────────────────────────────────────────────────
-# 3.1 VISTA DÍA: serie continua fecha+hora
+# 3.1 VISTA DÍA: serie continua fecha+hora (sumas)
 # ────────────────────────────────────────────────
 if vista == "Día":
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
-    ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
+    ag_day = df.groupby('dt')[['planificados','reales']].sum().reset_index()
 
     fig_day = px.line(
-        ag, x='dt', y=['planificados','reales'],
-        labels={'value':'Volumen','dt':'Fecha + Hora','variable':'Tipo'},
+        ag_day, x='dt', y=['planificados','reales'],
+        labels={'value':'Volumen','dt':'Fecha y Hora','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
         title="📅 Contactos por Intervalo (Fecha + Hora)"
     )
@@ -80,30 +83,37 @@ if vista == "Día":
     )
 
 # ────────────────────────────────────────────────
-# 3.2 VISTA SEMANA: curva horaria facetada por semana
+# 3.2 VISTA SEMANA: sumas + curva horaria promedio diario
 # ────────────────────────────────────────────────
 elif vista == "Semana":
+    # Totales semanales (sumas)
+    sem_totales = df.groupby('semana_iso')[['planificados','reales']].sum().reset_index()
+    st.markdown("**Totales por Semana ISO**")
+    st.dataframe(sem_totales)
+
+    # Curva horaria promedio diario por semana (medias)
     weekly_detail = (
-        df.groupby(['semana_iso','intervalo'])
-          [['planificados','reales']]
-          .sum()
+        df.groupby(['semana_iso','intervalo'])[['planificados','reales']]
+          .mean()
           .reset_index()
     )
-
     fig_week = px.line(
         weekly_detail,
-        x='intervalo',
-        y=['planificados','reales'],
-        facet_col='semana_iso',
-        facet_col_wrap=4,
-        labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo','semana_iso':'Semana ISO'},
+        x='intervalo', y=['planificados','reales'],
+        facet_col='semana_iso', facet_col_wrap=4,
+        labels={
+            'intervalo':'Hora',
+            'value':'Prom. Contactos por día',
+            'variable':'Tipo',
+            'semana_iso':'Semana ISO'
+        },
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📆 Curva horaria por Semana (00:00–23:59)"
+        title="📆 Curva horaria promedio diario por Semana"
     )
     fig_week.update_traces(line=dict(width=2))
     fig_week.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
     fig_week.update_layout(showlegend=False, hovermode="x unified")
-    # mostrar leyenda solo una vez
+    # activar leyenda solo una vez
     fig_week.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
 
     st.plotly_chart(
@@ -113,39 +123,46 @@ elif vista == "Semana":
     )
 
 # ────────────────────────────────────────────────
-# 3.3 VISTA MES: curva horaria facetada por mes
+# 3.3 VISTA MES: sumas + curva horaria promedio diario
 # ────────────────────────────────────────────────
 else:  # vista == "Mes"
+    # Totales mensuales (sumas)
+    monthly_tot = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
+    st.markdown("**Totales por Mes**")
+    st.dataframe(monthly_tot)
+
+    # Curva horaria promedio diario por mes (medias)
     monthly_detail = (
-        df.groupby(['nombre_mes','intervalo'])
-          [['planificados','reales']]
-          .sum()
+        df.groupby(['nombre_mes','intervalo'])[['planificados','reales']]
+          .mean()
           .reset_index()
     )
-
-    fig_mon = px.line(
+    fig_month = px.line(
         monthly_detail,
-        x='intervalo',
-        y=['planificados','reales'],
-        facet_col='nombre_mes',
-        facet_col_wrap=4,
-        labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo','nombre_mes':'Mes'},
+        x='intervalo', y=['planificados','reales'],
+        facet_col='nombre_mes', facet_col_wrap=4,
+        labels={
+            'intervalo':'Hora',
+            'value':'Prom. Contactos por día',
+            'variable':'Tipo',
+            'nombre_mes':'Mes'
+        },
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📊 Curva horaria por Mes (00:00–23:59)"
+        title="📊 Curva horaria promedio diario por Mes"
     )
-    fig_mon.update_traces(line=dict(width=2))
-    fig_mon.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
-    fig_mon.update_layout(showlegend=False, hovermode="x unified")
-    fig_mon.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
+    fig_month.update_traces(line=dict(width=2))
+    fig_month.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
+    fig_month.update_layout(showlegend=False, hovermode="x unified")
+    fig_month.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
 
     st.plotly_chart(
-        fig_mon,
+        fig_month,
         use_container_width=True,
         config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]}
     )
 
 # ────────────────────────────────────────────────
-# 4. Análisis adicional (se mantiene igual)
+# 4. Análisis adicional (manteniendo tu código original)
 # ────────────────────────────────────────────────
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
@@ -159,7 +176,10 @@ st.pyplot(fig2)
 
 st.subheader("🔥 Heatmap: Desvío por Día de la Semana y Intervalo")
 heat = df.pivot_table(
-    values='desvio_%', index='intervalo', columns='dia_semana', aggfunc='mean'
+    values='desvio_%',
+    index='intervalo',
+    columns='dia_semana',
+    aggfunc='mean'
 )
 fig3, ax3 = plt.subplots(figsize=(10,6))
 sns.heatmap(heat, cmap="coolwarm", center=0, ax=ax3)
