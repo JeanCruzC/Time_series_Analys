@@ -55,10 +55,14 @@ ajustes = (
     .mean()
     .reset_index()
 )
+# si desvío_ % = -71.43 → ajuste = 1 - (-71.43/100) = 1 + 0.7143 = 1.7143 → 171%
+# si desvío_% = +45.0  → ajuste = 1 - (45.0/100)  = 1 - 0.45   = 0.55  → 55%
 ajustes['ajuste_sugerido'] = (1 - ajustes['desvio_%'] / 100).round(4)
+# mostrar como porcentaje
+ajustes['ajuste_sugerido'] = ajustes['ajuste_sugerido'].map(lambda x: f"{x*100:.0f}%")
 
 st.subheader(f"📆 Ajustes sugeridos para Semana ISO {proxima_sem}")
-st.write(f"(basados en la semana {ultima_sem})")
+st.write(f"(basados en resultados de la semana {ultima_sem})")
 st.dataframe(ajustes, use_container_width=True)
 
 csv_aj = ajustes.to_csv(index=False).encode('utf-8')
