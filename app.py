@@ -186,7 +186,7 @@ if vista == 'Día':
     st.plotly_chart(fig_anom, use_container_width=True)
 
 elif vista == 'Semana':
-    weekly = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].sum().reset_index()
+    weekly = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].mean().reset_index()
     melt = weekly.melt(
         id_vars=['semana_iso','intervalo'],
         value_vars=['planificados','reales'],
