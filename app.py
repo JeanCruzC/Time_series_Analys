@@ -42,10 +42,10 @@ df['_dt'] = df.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), 
 serie_continua = df.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 2.2 Última semana ───────────
-ultima_sem = df['semana_iso'].max()
-_df_last   = df[df['semana_iso']==ultima_sem].copy()
+ultima_sem   = df['semana_iso'].max()
+_df_last     = df[df['semana_iso']==ultima_sem].copy()
 _df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
-serie_last = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
+serie_last   = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 3. Mejor práctica: combinación ponderada ───────────
 # Parámetros
@@ -63,8 +63,9 @@ cur = (
 )
 
 # 3.2 promedio desvío % de N semanas anteriores
-prev_weeks = [w for w in sorted(df['semana_iso'].unique()) if w < ultima_sem][-N:]
-df_prev = df[df['semana_iso'].isin(prev_weeks)]
+prev_weeks_raw = sorted(df['semana_iso'].unique())
+prev_weeks = [int(w) for w in prev_weeks_raw if w < ultima_sem][-N:]
+df_prev     = df[df['semana_iso'].isin(prev_weeks)]
 prev = (
     df_prev
     .groupby(['dia_semana','intervalo'])['desvio_%']
