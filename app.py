@@ -61,12 +61,12 @@ st.subheader("🔢 KPIs de Planificación vs. Realidad")
 y_true_all, y_pred_all = serie_continua['reales'], serie_continua['planificados']
 mae_all  = mean_absolute_error(y_true_all, y_pred_all)
 rmse_all = np.sqrt(mean_squared_error(y_true_all, y_pred_all))
-mape_all = np.mean(np.abs((y_true_all - y_pred_all) / y_pred_all.replace(0, np.nan))) * 100
+mape_all = np.mean(np.abs((y_true_all - y_pred_all) / y_true_all.replace(0, np.nan))) * 100
 
 y_true_w, y_pred_w = serie_last['reales'], serie_last['planificados']
 mae_w  = mean_absolute_error(y_true_w, y_pred_w)
 rmse_w = np.sqrt(mean_squared_error(y_true_w, y_pred_w))
-mape_w = np.mean(np.abs((y_true_w - y_pred_w) / y_pred_w.replace(0, np.nan))) * 100
+mape_w = np.mean(np.abs((y_true_w - y_pred_w) / y_true_w.replace(0, np.nan))) * 100
 
 st.markdown(
     f"- **MAE:** Total={mae_all:.0f}, Semana={mae_w:.0f}  \\n- **RMSE:** Total={rmse_all:.0f}, Semana={rmse_w:.0f}  \\n- **MAPE:** Total={mape_all:.2f}%, Semana={mape_w:.2f}%"
@@ -87,7 +87,14 @@ opcion = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
 errors = serie_continua.copy() if opcion == "Total" else serie_last.copy()
 errors['error_abs'] = np.abs(errors['reales'] - errors['planificados'])
 errors['MAPE'] = np.abs((errors['reales'] - errors['planificados']) / errors['planificados'].replace(0, np.nan)) * 100
-errors_tab = errors.reset_index().groupby('_dt')[['error_abs','MAPE']].mean()
+errors_tab = (
+    errors.reset_index()
+          .groupby('_dt')[['error_abs','MAPE']]
+          .mean()
+          .reset_index()
+)
+# Formatear MAPE como porcentaje con dos decimales
+errors_tab['MAPE'] = errors_tab['MAPE'].round(2).astype(str) + '%'
 st.dataframe(errors_tab.sort_values('MAPE', ascending=False).head(10))
 
 # ─────────── 6. Heatmap de desvíos ───────────
