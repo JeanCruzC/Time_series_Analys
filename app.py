@@ -40,8 +40,10 @@ df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, order
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día","Semana","Mes"])
 
+# ———————————————————————————————————
+# VISTA DÍA  (idéntica a antes)
+# ———————————————————————————————————
 if vista == "Día":
-    # Combina fecha+hora para eje X continuo
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
     ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
     fig = px.line(
@@ -61,113 +63,93 @@ if vista == "Día":
             dict(count=1,  label="1d",  step="day",   stepmode="backward"),
             dict(step="all", label="Todo")
         ]),
-        type="date",
-        fixedrange=False
+        type="date", fixedrange=False
     )
     fig.update_layout(
         hovermode="x unified",
         dragmode="zoom",
         yaxis=dict(fixedrange=False, autorange=True)
     )
-    st.plotly_chart(
-        fig, use_container_width=True,
-        config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]}
-    )
+    st.plotly_chart(fig, use_container_width=True,
+                    config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]})
 
+# ———————————————————————————————————
+# VISTA SEMANA  (con salida estilo Excel)
+# ———————————————————————————————————
 elif vista == "Semana":
-    # 3.1: Gráfico de totales semanales
+    # 3.1: gráfico agregado por semana
     weekly = df.groupby(['semana_iso','nombre_mes'])[['planificados','reales']].sum().reset_index()
     weekly['etiqueta'] = weekly['nombre_mes'] + " – Sem " + weekly['semana_iso'].astype(str)
     fig_week = px.line(
         weekly, x='etiqueta', y=['planificados','reales'],
         labels={'value':'Volumen','etiqueta':'Semana','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📆 Contactos por Semana ISO"
+        title="📆 Contactos por Semana ISO (Totales)"
     )
     fig_week.update_traces(line=dict(width=2))
-    fig_week.update_layout(
-        hovermode="x unified",
-        dragmode="zoom",
-        yaxis=dict(fixedrange=False, autorange=True)
-    )
     fig_week.update_xaxes(tickangle=-45)
-    st.plotly_chart(fig_week, use_container_width=True, config={"scrollZoom": True})
+    fig_week.update_layout(hovermode="x unified")
+    st.plotly_chart(fig_week, use_container_width=True)
 
-    # 3.2: Detalle por intervalo dentro de cada semana
-    st.subheader("🔍 Detalle Intervalos por Semana")
-    df_w = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].sum().reset_index()
-    df_w['etiqueta'] = (
-        "Sem " + df_w['semana_iso'].astype(str)
-        + " – " + df_w['intervalo'].astype(str)
+    # 3.2: DETALLE estilo Excel concatenado Sem – hh:mm
+    st.subheader("🔍 Detalle Intervalos concatenados (Sem – Hora)")
+
+    df_excel = df.sort_values(['semana_iso','intervalo']).copy()
+    df_excel['tag'] = (
+        "Sem " + df_excel['semana_iso'].astype(str)
+        + " – " + df_excel['intervalo'].astype(str).str.slice(0,5)
     )
-    df_w['etiqueta'] = pd.Categorical(
-        df_w['etiqueta'],
-        categories=df_w['etiqueta'],
-        ordered=True
-    )
-    fig_det = px.line(
-        df_w,
-        x='etiqueta',
-        y=['planificados','reales'],
-        labels={'value':'Volumen','etiqueta':'Semana – Hora','variable':'Tipo'},
+    df_excel['tag'] = pd.Categorical(df_excel['tag'],
+                                     categories=df_excel['tag'].unique(),
+                                     ordered=True)
+    fig_excel = px.line(
+        df_excel, x='tag', y=['planificados','reales'],
+        labels={'value':'Volumen','tag':'Semana – Hora','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="Detalle por Intervalo de Todas las Semanas"
+        title="Serie contínua Semana – Intervalo (patrón diario dentro de cada semana)"
     )
-    fig_det.update_traces(line=dict(width=2))
-    fig_det.update_layout(
-        xaxis_title='Semana – Hora',
+    fig_excel.update_traces(line=dict(width=2))
+    fig_excel.update_layout(
+        xaxis_title='Semana – Intervalo',
         yaxis_title='Volumen',
         hovermode="x unified"
     )
-    fig_det.update_xaxes(tickangle=90)
-    st.plotly_chart(fig_det, use_container_width=True)
+    fig_excel.update_xaxes(tickangle=90)
+    st.plotly_chart(fig_excel, use_container_width=True)
 
-else:  # Mes
-    # 3.1: Gráfico de totales mensuales
+# ———————————————————————————————————
+# VISTA MES  (igual que antes, con detalle por intervalo dentro de mes)
+# ———————————————————————————————————
+else:
     monthly = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
     monthly['etiqueta'] = monthly['nombre_mes']
     fig_mon = px.line(
         monthly, x='etiqueta', y=['planificados','reales'],
         labels={'value':'Volumen','etiqueta':'Mes','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📊 Contactos por Mes"
+        title="📊 Contactos por Mes (Totales)"
     )
     fig_mon.update_traces(line=dict(width=2))
-    fig_mon.update_layout(
-        hovermode="x unified",
-        dragmode="zoom",
-        yaxis=dict(fixedrange=False, autorange=True)
-    )
+    fig_mon.update_layout(hovermode="x unified")
     fig_mon.update_xaxes(tickangle=-45)
-    st.plotly_chart(fig_mon, use_container_width=True, config={"scrollZoom": True})
+    st.plotly_chart(fig_mon, use_container_width=True)
 
-    # 3.2: Detalle por intervalo dentro de cada mes
-    st.subheader("🔍 Detalle Intervalos por Mes")
-    df_m = df.groupby(['nombre_mes','intervalo'])[['planificados','reales']].sum().reset_index()
-    df_m['etiqueta'] = df_m['nombre_mes'] + " – " + df_m['intervalo'].astype(str)
-    df_m['etiqueta'] = pd.Categorical(
-        df_m['etiqueta'],
-        categories=df_m['etiqueta'],
-        ordered=True
-    )
-    fig_detm = px.line(
-        df_m,
-        x='etiqueta',
-        y=['planificados','reales'],
-        labels={'value':'Volumen','etiqueta':'Mes – Hora','variable':'Tipo'},
+    st.subheader("🔍 Detalle Intervalos concatenados (Mes – Hora)")
+    df_m = df.sort_values(['nombre_mes','intervalo']).copy()
+    df_m['tag'] = df_m['nombre_mes'] + " – " + df_m['intervalo'].astype(str).str.slice(0,5)
+    df_m['tag'] = pd.Categorical(df_m['tag'], categories=df_m['tag'].unique(), ordered=True)
+    fig_excel_m = px.line(
+        df_m, x='tag', y=['planificados','reales'],
+        labels={'value':'Volumen','tag':'Mes – Hora','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="Detalle por Intervalo de Todos los Meses"
+        title="Serie contínua Mes – Intervalo"
     )
-    fig_detm.update_traces(line=dict(width=2))
-    fig_detm.update_layout(
-        xaxis_title='Mes – Hora',
-        yaxis_title='Volumen',
-        hovermode="x unified"
-    )
-    fig_detm.update_xaxes(tickangle=90)
-    st.plotly_chart(fig_detm, use_container_width=True)
+    fig_excel_m.update_traces(line=dict(width=2))
+    fig_excel_m.update_xaxes(tickangle=90)
+    fig_excel_m.update_layout(hovermode="x unified")
+    st.plotly_chart(fig_excel_m, use_container_width=True)
 
-# 4. Análisis adicional
+# 4. Análisis adicional (sin cambios)
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig2, ax2 = plt.subplots(figsize=(12,4))
@@ -187,7 +169,7 @@ st.pyplot(fig3)
 
 st.subheader("📆 Proyección Ajustes (Semana 23/06 - 29/06)")
 aj = df.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
-aj['ajuste_sugerido'] = aj['desvio_%'].round(2) / 100
+aj['ajuste_sugerido'] = aj['desvio_%'].round(2)/100
 aj['semana_obj'] = "2025-06-23 al 2025-06-29"
 aj = aj[['semana_obj','dia_semana','intervalo','ajuste_sugerido']]
 st.dataframe(aj, use_container_width=True)
