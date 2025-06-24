@@ -171,13 +171,11 @@ if vista == 'Día':
     st.plotly_chart(fig, use_container_width=True)
 
 elif vista == 'Semana':
-    # Agrupar por semana e intervalo
     weekly_detail = (
         df.groupby(['semana_iso','intervalo'])[['planificados','reales']]
           .sum()
           .reset_index()
     )
-    # Derretir para Plotly
     df_week_melt = weekly_detail.melt(
         id_vars=['semana_iso','intervalo'],
         value_vars=['planificados','reales'],
@@ -202,16 +200,18 @@ elif vista == 'Semana':
     st.plotly_chart(fig_week, use_container_width=True)
 
 else:  # Mes
+    # --- aquí estaba el cierre mal, lo corregimos ---
     daily_m = (
-        df.assign(dia=df['fecha'].dt.date])
+        df.assign(dia=df['fecha'].dt.date)
           .groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']]
           .sum()
           .reset_index()
     )
     monthly_avg = (
-        daily_m.groupby(['nombre_mes','intervalo'])[['planificados','reales']]
-               .mean()
-               .reset_index()
+        daily_m
+        .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
+        .mean()
+        .reset_index()
     )
     fig = px.line(
         monthly_avg, x='intervalo', y=['planificados','reales'],
