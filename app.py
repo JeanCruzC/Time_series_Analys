@@ -24,14 +24,14 @@ df = df.rename(columns={
 })
 
 # 2. Preprocesamiento
-df['fecha'] = pd.to_datetime(df['fecha'])
-df['intervalo'] = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
-df['dia_semana']  = df['fecha'].dt.day_name()
-df['semana_iso']  = df['fecha'].dt.isocalendar().week
-df['mes']         = df['fecha'].dt.month
-df['nombre_mes']  = df['fecha'].dt.strftime('%B')
-df['desvio']      = df['reales'] - df['planificados']
-df['desvio_%']    = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
+df['fecha']      = pd.to_datetime(df['fecha'])
+df['intervalo']  = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
+df['dia_semana'] = df['fecha'].dt.day_name()
+df['semana_iso'] = df['fecha'].dt.isocalendar().week
+df['mes']        = df['fecha'].dt.month
+df['nombre_mes'] = df['fecha'].dt.strftime('%B')
+df['desvio']     = df['reales'] - df['planificados']
+df['desvio_%']   = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
 
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
@@ -41,7 +41,6 @@ st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día", "Semana", "Mes"])
 
 if vista == "Día":
-    # combinar fecha + hora para eje X continuo
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
     ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
     fig = px.line(
@@ -52,7 +51,6 @@ if vista == "Día":
         line_shape='linear'
     )
     fig.update_traces(line=dict(width=2))
-    # eje X con fecha y hora en líneas distintas
     fig.update_xaxes(
         title='Fecha y Hora',
         tickformat='%Y-%m-%d<br>%H:%M',
@@ -90,15 +88,16 @@ else:  # Mes
     )
     fig.update_xaxes(tickangle=-45)
 
-# configuración común
+# 4. Ajustes de layout y autorange
+fig.update_traces(line=dict(width=2))
 fig.update_layout(
     hovermode="x unified",
     dragmode="pan",
-    yaxis=dict(fixedrange=False)
+    yaxis=dict(fixedrange=False, autorange=True)
 )
 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
-# 4. Análisis adicional (idéntico a tu pedido)
+# 5. Análisis adicional
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig2, ax2 = plt.subplots(figsize=(12,4))
@@ -122,6 +121,7 @@ aj['ajuste_sugerido'] = aj['desvio_%'].round(2) / 100
 aj['semana_obj'] = "2025-06-23 al 2025-06-29"
 aj = aj[['semana_obj','dia_semana','intervalo','ajuste_sugerido']]
 st.dataframe(aj, use_container_width=True)
+
 st.download_button(
     "📥 Descargar ajustes (.csv)",
     data=aj.to_csv(index=False),
