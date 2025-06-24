@@ -48,7 +48,6 @@ if vista == "Día":
         title="Vista Día: Zoom & Scroll"
     )
     fig.update_traces(line=dict(width=2))
-    # rangeslider habilitado únicamente
     fig.update_xaxes(rangeslider=dict(visible=True), type="date")
     fig.update_layout(dragmode="pan", hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True,
@@ -56,16 +55,14 @@ if vista == "Día":
 
 elif vista == "Semana":
     st.subheader("📆 Contactos semanales con curva horaria concatenada")
-    # concateno todas las semanas en un único eje de fecha+hora
     df_w = df.sort_values('dt').copy()
     fig = px.line(
         df_w, x='dt', y=['planificados','reales'],
         labels={'dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="Vista Semana: 00:00–23:59 del primer lunes, luego pan/zoom"
+        title="Vista Semana: 00:00–23:59 primero, luego pan/zoom"
     )
     fig.update_traces(line=dict(width=2))
-    # Inicio pegado a la primera jornada
     primer_lunes = df_w['dt'].dt.normalize().min()
     fig.update_xaxes(
         range=[primer_lunes, primer_lunes + pd.Timedelta(days=1)],
@@ -86,4 +83,45 @@ else:  # Mes
     fig = px.line(
         monthly.sort_values('nombre_mes'),
         x='nombre_mes', y=['planificados','reales'],
-        labels={'nombre_mes':'Mes','value':'Volumen','variab_
+        labels={'nombre_mes':'Mes','value':'Volumen','variable':'Tipo'},
+        color_discrete_map={'planificados':'orange','reales':'blue'},
+        title="Vista Mes: Totales con Zoom & Scroll"
+    )
+    fig.update_traces(line=dict(width=2))
+    fig.update_xaxes(rangeslider=dict(visible=True), type="category")
+    fig.update_layout(dragmode="pan", hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True,
+                    config={"scrollZoom": True})
+
+# 4) Análisis extra (sin cambios)
+st.subheader("📉 Desvío Promedio por Intervalo")
+int_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
+fig2, ax2 = plt.subplots(figsize=(12,4))
+int_avg.plot(kind='bar', ax=ax2, color='steelblue')
+ax2.axhline(0, color='black', linestyle='--')
+ax2.set_ylabel("% Desvío")
+ax2.set_title("Promedio de Desvío % por Intervalo")
+plt.xticks(rotation=45)
+st.pyplot(fig2)
+
+st.subheader("🔥 Heatmap: Desvío % por Día de la Semana y Intervalo")
+heat = df.pivot_table(values='desvio_%', index='intervalo',
+                      columns='dia_semana', aggfunc='mean')
+fig3, ax3 = plt.subplots(figsize=(10,6))
+sns.heatmap(heat, cmap="coolwarm", center=0, ax=ax3)
+ax3.set_title("Heatmap % Desvío")
+st.pyplot(fig3)
+
+st.subheader("📆 Proyección Ajustes (23/06 – 29/06)")
+aj = df.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
+aj['ajuste_sugerido'] = aj['desvio_%'].round(2)/100
+aj['semana_obj'] = "2025-06-23 al 2025-06-29"
+aj = aj[['semana_obj','dia_semana','intervalo','ajuste_sugerido']]
+st.dataframe(aj, use_container_width=True)
+st.download_button(
+    "📥 Descargar ajustes (.csv)",
+    data=aj.to_csv(index=False),
+    file_name="ajustes_proyectados_2306.csv",
+    mime="text/csv"
+)
+
