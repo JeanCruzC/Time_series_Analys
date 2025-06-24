@@ -9,7 +9,7 @@ import datetime
 st.set_page_config(layout="wide")
 st.title("📈 Análisis de Contactos y Ajustes por Intervalo – Vista Día / Semana / Mes")
 
-#──────────────────────────────── 1. CARGA ─────────────────────────────
+#────────────────────────── 1. CARGA ──────────────────────────
 file = st.file_uploader("📂 Carga tu archivo histórico (CSV o Excel)", type=["csv","xlsx"])
 if not file:
     st.stop()
@@ -17,32 +17,26 @@ if not file:
 df = pd.read_excel(file) if file.name.endswith("xlsx") else pd.read_csv(file)
 df.columns = df.columns.str.strip().str.lower()
 df = df.rename(columns={
-    'fecha':'fecha',
-    'tramo':'intervalo',
-    'planif. contactos':'planificados',
-    'contactos':'reales'
+    'fecha': 'fecha',
+    'tramo': 'intervalo',
+    'planif. contactos': 'planificados',
+    'contactos': 'reales'
 })
 
-#──────────────────────────────── 2. PREPROCESO ────────────────────────
+#────────────────────────── 2. PREPROCESO ─────────────────────
 df['fecha']      = pd.to_datetime(df['fecha'])
 df['intervalo']  = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
-df['hora_str']   = df['intervalo'].astype(str).str.slice(0,5)              # 00:00
-df['dia_semana'] = df['fecha'].dt.day_name()
+df['hora_str']   = df['intervalo'].astype(str).str.slice(0,5)            # 00:00
+df['dt']         = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 df['semana_iso'] = df['fecha'].dt.isocalendar().week
 df['anno']       = df['fecha'].dt.isocalendar().year
+df['monday']     = df['fecha'] - pd.to_timedelta(df['fecha'].dt.weekday, unit='d')
 df['nombre_mes'] = df['fecha'].dt.strftime('%B')
-df['dt']         = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
+df['desvio_%']   = (df['reales'] - df['planificados']) / df['planificados'].replace(0, np.nan) * 100
 
-# lunes de la ISO-semana para construir eje continuo
-df['monday'] = df['fecha'] - pd.to_timedelta(df['fecha'].dt.weekday, unit='d')
-df['desvio_%'] = (df['reales'] - df['planificados']) / df['planificados'].replace(0, np.nan) * 100
+vista = st.selectbox("🔎 Ver por:", ["Día", "Semana", "Mes"])
 
-dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
-
-vista = st.selectbox("🔎 Ver por:", ["Día","Semana","Mes"])
-
-#─────────────────────────────── 3A. VISTA DÍA ─────────────────────────
+#────────────────────────── 3A. DÍA ───────────────────────────
 if vista == "Día":
     daily = df.groupby('dt')[['planificados','reales']].sum().reset_index()
     fig_day = px.line(
@@ -66,34 +60,30 @@ if vista == "Día":
     st.plotly_chart(fig_day, use_container_width=True,
                     config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]})
 
-#─────────────────────────────── 3B. VISTA SEMANA ──────────────────────
+#────────────────────────── 3B. SEMANA ────────────────────────
 elif vista == "Semana":
     st.subheader("📆 Curva horaria concatenada por Semana (zoom igual que Día)")
 
-    # Agregamos por semana + intervalo
+    # Eje datetime continuo (lunes de la ISO-semana + hora del intervalo)
     week_curve = (df.groupby(['anno','semana_iso','monday','intervalo','hora_str'])
                     [['planificados','reales']].sum().reset_index())
-
-    # Construimos datetime continuo: lunes ISO + hora del intervalo
     week_curve['dt_week'] = week_curve.apply(
-        lambda r: r['monday'] + datetime.timedelta(
-            hours=r['intervalo'].hour, minutes=r['intervalo'].minute), axis=1)
+        lambda r: r['monday'] + datetime.timedelta(hours=r['intervalo'].hour,
+                                                   minutes=r['intervalo'].minute), axis=1)
 
     fig_week = px.line(
-        week_curve,
-        x='dt_week',
-        y=['planificados','reales'],
+        week_curve, x='dt_week', y=['planificados','reales'],
         labels={'value':'Volumen','dt_week':'Semana – Hora','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
         title="Serie contínua Semana – Hora (todas las semanas)"
     )
     fig_week.update_traces(line=dict(width=2))
     fig_week.update_xaxes(
-        tickformat='%Y-W%V<br>%H:%M',              # ej. 2025-W18   12:00
+        tickformat='%G-W%V<br>%H:%M',                # 2025-W18 12:00
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
-            dict(count=1, label="1w", step="week", stepmode="backward"),
-            dict(count=2, label="2w", step="week", stepmode="backward"),
+            dict(count=7,  label="1w", step="day",  stepmode="backward"),
+            dict(count=14, label="2w", step="day",  stepmode="backward"),
             dict(step="all", label="Todo")
         ])
     )
@@ -101,10 +91,11 @@ elif vista == "Semana":
     st.plotly_chart(fig_week, use_container_width=True,
                     config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]})
 
-#─────────────────────────────── 3C. VISTA MES ─────────────────────────
+#────────────────────────── 3C. MES ──────────────────────────
 else:
     st.subheader("📊 Curva horaria agregada por Mes")
     df_mes = df.groupby(['nombre_mes','hora_str'])[['planificados','reales']].sum().reset_index()
+
     for col, titulo in zip(['planificados','reales'], ['Planificados','Reales']):
         fig_mes = px.line(
             df_mes, x='hora_str', y=col, color='nombre_mes',
@@ -115,7 +106,7 @@ else:
         fig_mes.update_xaxes(tickangle=45)
         st.plotly_chart(fig_mes, use_container_width=True)
 
-#──────────────────────────── 4. ANÁLISIS EXTRA ────────────────────────
+#────────────────────────── 4. DESVÍOS Y AJUSTES ─────────────
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig_bar, ax_bar = plt.subplots(figsize=(12,4))
@@ -133,7 +124,7 @@ sns.heatmap(heat, cmap="coolwarm", center=0, ax=ax_hm)
 ax_hm.set_title("Heatmap % Desvío")
 st.pyplot(fig_hm)
 
-st.subheader("📆 Proyección Ajustes (Semana 23/06 – 29/06)")
+st.subheader("📆 Proyección Ajustes (23/06 – 29/06)")
 aj = df.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
 aj['ajuste_sugerido'] = aj['desvio_%'].round(2)/100
 aj['semana_obj'] = "2025-06-23 al 2025-06-29"
