@@ -38,7 +38,6 @@ df['nombre_mes'] = df['fecha'].dt.strftime('%B')
 df['desvio']     = df['reales'] - df['planificados']
 df['desvio_%']   = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
 
-# Orden de días
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
 
@@ -83,109 +82,116 @@ if vista == "Día":
     )
 
 # ────────────────────────────────────────────────
-# 3.2 VISTA SEMANA: curva horaria facetada por semana
+# 3.2 VISTA SEMANA: curva horaria promedio diario por semana
 # ────────────────────────────────────────────────
 elif vista == "Semana":
-    weekly_detail = (
-        df.groupby(['semana_iso','intervalo'])
-          [['planificados','reales']]
-          .sum()
-          .reset_index()
+    # 1) Sumar por día, semana y hora
+    daily = (
+        df
+        .assign(dia=df['fecha'].dt.date)
+        .groupby(['semana_iso','dia','intervalo'])[['planificados','reales']]
+        .sum()
+        .reset_index()
+    )
+    # 2) Promediar esos sumarios por semana+hora
+    weekly_avg = (
+        daily
+        .groupby(['semana_iso','intervalo'])[['planificados','reales']]
+        .mean()
+        .reset_index()
     )
 
-    fig_week_detail = px.line(
-        weekly_detail,
+    fig_week = px.line(
+        weekly_avg,
         x='intervalo',
         y=['planificados','reales'],
         facet_col='semana_iso',
         facet_col_wrap=4,
         labels={
             'intervalo':'Hora',
-            'value':'Volumen',
+            'value':'Promedio diario',
             'variable':'Tipo',
             'semana_iso':'Semana ISO'
         },
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📆 Curva horaria por Semana (00:00–23:59)"
+        title="📆 Curva horaria promedio diario por Semana (00:00–23:59)"
     )
-    fig_week_detail.update_traces(line=dict(width=2))
-    fig_week_detail.update_xaxes(
+    fig_week.update_traces(line=dict(width=2))
+    fig_week.update_xaxes(
         tickformat='%H:%M',
-        matches=None,          # ejes independientes
+        matches=None,
         fixedrange=False
     )
-    fig_week_detail.update_layout(
+    fig_week.update_layout(
         showlegend=False,
         hovermode="x unified"
     )
-    # Mostrar leyenda solo una vez
-    fig_week_detail.for_each_trace(
-        lambda t: t.update(showlegend=True) if t.name=='reales' else None
-    )
+    fig_week.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
 
     st.plotly_chart(
-        fig_week_detail,
+        fig_week,
         use_container_width=True,
         config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]}
     )
 
 # ────────────────────────────────────────────────
-# 3.3 VISTA MES: curva horaria promedio diario
+# 3.3 VISTA MES: totales + curva horaria promedio diario por mes
 # ────────────────────────────────────────────────
-else:  # Mes
-    # sumar totales por mes + hora
-    sum_m = (
+else:  # vista == "Mes"
+    # Totales por mes
+    monthly = (
+        df.groupby(['mes','nombre_mes'])[['planificados','reales']]
+          .sum()
+          .reset_index()
+    )
+    monthly['etiqueta'] = monthly['nombre_mes']
+    st.subheader("📊 Totales por Mes")
+    st.dataframe(monthly, use_container_width=True)
+
+    # Curva horaria promedio diario por mes
+    daily_month = (
         df
-        .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
+        .assign(dia=df['fecha'].dt.date)
+        .groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']]
         .sum()
         .reset_index()
     )
-    # contar días distintos por mes
-    days_m = (
-        df
-        .assign(dia=df['fecha'].dt.date)
-        .groupby('nombre_mes')['dia']
-        .nunique()
-        .rename('dias')
+    monthly_avg = (
+        daily_month
+        .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
+        .mean()
         .reset_index()
     )
-    # unir y calcular promedios
-    sum_m = sum_m.merge(days_m, on='nombre_mes')
-    sum_m['planif_avg'] = sum_m['planificados'] / sum_m['dias']
-    sum_m['real_avg']   = sum_m['reales']      / sum_m['dias']
 
-    fig_month = px.line(
-        sum_m,
+    fig_mon = px.line(
+        monthly_avg,
         x='intervalo',
-        y=['planif_avg','real_avg'],
+        y=['planificados','reales'],
         facet_col='nombre_mes',
-        facet_col_wrap=4,
+        facet_col_wrap=2,
         labels={
             'intervalo':'Hora',
             'value':'Promedio diario',
             'variable':'Tipo',
             'nombre_mes':'Mes'
         },
-        color_discrete_map={'planif_avg':'orange','real_avg':'blue'},
-        title="📊 Curva horaria promedio diario por Mes"
+        color_discrete_map={'planificados':'orange','reales':'blue'},
+        title="🌙 Curva horaria promedio diario por Mes (00:00–23:59)"
     )
-    fig_month.update_traces(line=dict(width=2))
-    fig_month.update_xaxes(
+    fig_mon.update_traces(line=dict(width=2))
+    fig_mon.update_xaxes(
         tickformat='%H:%M',
         matches=None,
         fixedrange=False
     )
-    fig_month.update_layout(
+    fig_mon.update_layout(
         showlegend=False,
         hovermode="x unified"
     )
-    # Mostrar leyenda solo una vez
-    fig_month.for_each_trace(
-        lambda t: t.update(showlegend=True) if t.name=='real_avg' else None
-    )
+    fig_mon.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
 
     st.plotly_chart(
-        fig_month,
+        fig_mon,
         use_container_width=True,
         config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]}
     )
@@ -220,7 +226,6 @@ aj = df.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
 aj['ajuste_sugerido'] = aj['desvio_%'].round(2)/100
 aj['semana_obj'] = "2025-06-23 al 2025-06-29"
 aj = aj[['semana_obj','dia_semana','intervalo','ajuste_sugerido']]
-
 st.dataframe(aj, use_container_width=True)
 st.download_button(
     "📥 Descargar ajustes (.csv)",
