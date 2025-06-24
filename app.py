@@ -25,18 +25,20 @@ df = df.rename(columns={
 # ─────────────── 2. Preprocesamiento ───────────────
 df['fecha']      = pd.to_datetime(df['fecha'])
 df['intervalo']  = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
-df['hora_str']   = df['intervalo'].astype(str).str[:5]
 df['dt']         = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 df['semana_iso'] = df['fecha'].dt.isocalendar().week
 df['nombre_mes'] = df['fecha'].dt.strftime('%B')
-df['desvio_%']   = (df['reales'] - df['planificados']) / df['planificados'].replace(0, np.nan) * 100
+df['hora_str']   = df['intervalo'].astype(str).str[:5]
+df['desvio']     = df['reales'] - df['planificados']
+df['desvio_%']   = df['desvio'] / df['planificados'].replace(0, np.nan) * 100
 
 # Para heatmap
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['fecha'].dt.day_name(),
                                   categories=dias_orden, ordered=True)
 
-df_main = df.copy()  # para el análisis extra
+# guardo para el análisis final
+df_main = df.copy()
 
 # ─────────────── 3. Vista interactiva ───────────────
 vista = st.selectbox("🔎 Ver por:", ["Día","Semana","Mes"])
@@ -66,53 +68,56 @@ if vista == "Día":
                     config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
 elif vista == "Semana":
-    st.subheader("📆 Curva horaria: pequeñas vistas por Semana")
+    st.subheader("📆 Contactos por Semana ISO (Interactivo)")
 
-    # 1) Agrego por semana + hora
-    week_hour = (
-        df.groupby(['semana_iso','hora_str'])
-          [['planificados','reales']]
-          .sum()
-          .reset_index()
-    )
+    # 3.1 Creamos una fecha de inicio de semana para graficar un eje continuo
+    df['semana_inicio'] = df['fecha'] - pd.to_timedelta(df['fecha'].dt.weekday, unit='d')
+    weekly = df.groupby('semana_inicio')[['planificados','reales']].sum().reset_index()
 
-    # 2) Paso a formato largo
-    wh_long = week_hour.melt(
-        id_vars=['semana_iso','hora_str'],
-        value_vars=['planificados','reales'],
-        var_name='Tipo', value_name='Volumen'
-    )
-
-    # 3) Small multiples: un facet por cada semana_iso
+    # 3.2 Gráfica interactiva con rangeselector y slider
     fig_wk = px.line(
-        wh_long,
-        x='hora_str', y='Volumen',
-        color='Tipo',
-        facet_col='semana_iso', facet_col_wrap=4,
+        weekly, x='semana_inicio', y=['planificados','reales'],
+        labels={'semana_inicio':'Semana (lunes)','value':'Volumen','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        labels={'hora_str':'Hora del Día','semana_iso':'Semana ISO'},
-        title="Curva horaria por Semana (00:00–23:30)"
+        title="Semana: Totales con Zoom & Scroll"
     )
     fig_wk.update_traces(line=dict(width=2))
-    fig_wk.update_xaxes(matches=None, tickangle=45)   # cada facet con su propio eje X
-    fig_wk.update_yaxes(matches='y')                  # todos comparten la misma escala Y
-    fig_wk.update_layout(hovermode="x unified", height=600)
-    st.plotly_chart(fig_wk, use_container_width=True)
+    fig_wk.update_xaxes(
+        tickformat='%Y-%m-%d',
+        rangeslider=dict(visible=True),
+        rangeselector=dict(buttons=[
+            dict(count=2, label="2w", step="week", stepmode="backward"),
+            dict(count=4, label="4w", step="week", stepmode="backward"),
+            dict(step="all", label="Todo")
+        ])
+    )
+    fig_wk.update_layout(hovermode="x unified", dragmode="zoom",
+                         yaxis=dict(fixedrange=False))
+    st.plotly_chart(fig_wk, use_container_width=True,
+                    config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
 else:
-    st.subheader("📊 Curva horaria agregada por Mes")
-    mes = df.groupby(['nombre_mes','hora_str'])[['planificados','reales']].sum().reset_index()
-    for col,label in [('planificados','Planificados'),('reales','Reales')]:
-        fig3 = px.line(
-            mes, x='hora_str', y=col, color='nombre_mes',
-            labels={'hora_str':'Hora','nombre_mes':'Mes',col:'Volumen'},
-            title=f"{label} – Curva Horaria por Mes"
-        )
-        fig3.update_traces(line=dict(width=2))
-        fig3.update_xaxes(tickangle=45)
-        st.plotly_chart(fig3, use_container_width=True)
+    st.subheader("📊 Contactos por Mes (Interactivo)")
+    monthly = df.groupby('nombre_mes')[['planificados','reales']].sum().reset_index()
+    # convertimos nombre_mes en orden cronológico
+    meses_orden = ['January','February','March','April','May','June',
+                   'July','August','September','October','November','December']
+    monthly['nombre_mes'] = pd.Categorical(monthly['nombre_mes'],
+                                           categories=meses_orden, ordered=True)
+    fig_mon = px.line(
+        monthly.sort_values('nombre_mes'),
+        x='nombre_mes', y=['planificados','reales'],
+        labels={'nombre_mes':'Mes','value':'Volumen','variable':'Tipo'},
+        color_discrete_map={'planificados':'orange','reales':'blue'},
+        title="Mes: Totales con Zoom & Scroll"
+    )
+    fig_mon.update_traces(line=dict(width=2))
+    fig_mon.update_xaxes(rangeslider=dict(visible=True))
+    fig_mon.update_layout(hovermode="x unified", dragmode="zoom")
+    st.plotly_chart(fig_mon, use_container_width=True,
+                    config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
-# ─────────────── 4. Análisis adicional ───────────────
+# ─────────────── 4. Análisis Adicional ───────────────
 st.subheader("📉 Desvío Promedio por Intervalo")
 int_avg = df_main.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig4, ax4 = plt.subplots(figsize=(12,4))
