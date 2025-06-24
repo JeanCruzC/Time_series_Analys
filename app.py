@@ -40,7 +40,6 @@ st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día","Semana","Mes"])
 
 if vista == "Día":
-    # cada punto es un intervalo horario
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
     ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
     fig = px.line(ag, x='dt', y=['planificados','reales'],
@@ -48,73 +47,74 @@ if vista == "Día":
                   color_discrete_map={'planificados':'orange','reales':'blue'},
                   title="📅 Contactos por Intervalo (Fecha y Hora)", line_shape='linear')
     fig.update_traces(line=dict(width=2))
-    fig.update_xaxes(
-        tickformat='%Y-%m-%d<br>%H:%M',
-        rangeslider=dict(visible=True),
-        rangeselector=dict(buttons=[
-            dict(count=6,  label="6h",  step="hour", stepmode="backward"),
-            dict(count=12, label="12h", step="hour", stepmode="backward"),
-            dict(count=1,  label="1d",  step="day",  stepmode="backward"),
-            dict(step="all", label="Todo")
-        ]),
-        type="date", fixedrange=False
-    )
-    fig.update_layout(hovermode="x unified", dragmode="zoom",
+    fig.update_xaxes(tickformat='%Y-%m-%d<br>%H:%M',
+                     rangeslider=dict(visible=True),
+                     rangeselector=dict(buttons=[
+                         dict(count=6,  label="6h",  step="hour",  stepmode="backward"),
+                         dict(count=12, label="12h", step="hour",  stepmode="backward"),
+                         dict(count=1,  label="1d",  step="day",   stepmode="backward"),
+                         dict(step="all", label="Todo")
+                     ]),
+                     type="date", fixedrange=False)
+    fig.update_layout(hovermode="x unified",
+                      dragmode="zoom",
                       yaxis=dict(fixedrange=False, autorange=True))
-    st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True,
-                                                          "modeBarButtonsToAdd":["autoScale2d"]})
+    st.plotly_chart(fig, use_container_width=True,
+                    config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]})
 
 elif vista == "Semana":
-    # lineal agregado por semana ISO
-    ag = (df.groupby(['semana_iso','nombre_mes'])[['planificados','reales']]
-            .sum().reset_index())
-    ag['etiqueta'] = ag['nombre_mes'] + " – Sem " + ag['semana_iso'].astype(str)
-    fig = px.line(ag, x='etiqueta', y=['planificados','reales'],
-                  labels={'value':'Volumen','etiqueta':'Semana','variable':'Tipo'},
-                  color_discrete_map={'planificados':'orange','reales':'blue'},
-                  title="📆 Contactos por Semana ISO")
-    fig.update_traces(line=dict(width=2))
-    fig.update_layout(hovermode="x unified", dragmode="zoom",
-                      yaxis=dict(fixedrange=False, autorange=True))
-    fig.update_xaxes(tickangle=-45)
-    st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True,
-                                                          "modeBarButtonsToAdd":["autoScale2d"]})
+    # 3.1: resumen semanal agregado
+    weekly = df.groupby(['semana_iso','nombre_mes'])[['planificados','reales']].sum().reset_index()
+    weekly['etiqueta'] = weekly['nombre_mes'] + " – Sem " + weekly['semana_iso'].astype(str)
+    fig_week = px.line(weekly, x='etiqueta', y=['planificados','reales'],
+                       labels={'value':'Volumen','etiqueta':'Semana','variable':'Tipo'},
+                       color_discrete_map={'planificados':'orange','reales':'blue'},
+                       title="📆 Contactos por Semana ISO")
+    fig_week.update_traces(line=dict(width=2))
+    fig_week.update_layout(hovermode="x unified",
+                           dragmode="zoom",
+                           yaxis=dict(fixedrange=False, autorange=True))
+    fig_week.update_xaxes(tickangle=-45)
+    st.plotly_chart(fig_week, use_container_width=True, config={"scrollZoom": True})
 
-    # **Nuevo** heatmap de granularidad por intervalo vs semana
-    st.subheader("📊 Heatmap: Promedio de Contactos por Intervalo y Semana")
-    heat_sem = df.pivot_table(index='intervalo',
-                              columns='semana_iso',
-                              values='reales',
-                              aggfunc='mean')
-    fig_hs = px.imshow(heat_sem,
-                       labels=dict(x="Semana ISO", y="Intervalo", color="Reales"),
-                       aspect="auto")
-    st.plotly_chart(fig_hs, use_container_width=True)
+    # 3.2: detalle por intervalo de la semana seleccionada
+    week_sel = st.selectbox("Detalle de intervalo: elige semana ISO", sorted(df['semana_iso'].unique()))
+    df_w = df[df['semana_iso']==week_sel]
+    detail = df_w.groupby('intervalo')[['planificados','reales']].sum().reset_index()
+    fig_det = px.line(detail, x='intervalo', y=['planificados','reales'],
+                      labels={'value':'Volumen','intervalo':'Intervalo','variable':'Tipo'},
+                      color_discrete_map={'planificados':'orange','reales':'blue'},
+                      title=f"🔍 Detalle Intervalos Semana {week_sel}")
+    fig_det.update_traces(line=dict(width=2))
+    fig_det.update_layout(xaxis=dict(tickangle=45), hovermode="x unified")
+    st.plotly_chart(fig_det, use_container_width=True)
 
 else:  # Mes
-    ag = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
-    ag['etiqueta'] = ag['nombre_mes']
-    fig = px.line(ag, x='etiqueta', y=['planificados','reales'],
-                  labels={'value':'Volumen','etiqueta':'Mes','variable':'Tipo'},
-                  color_discrete_map={'planificados':'orange','reales':'blue'},
-                  title="📊 Contactos por Mes")
-    fig.update_traces(line=dict(width=2))
-    fig.update_layout(hovermode="x unified", dragmode="zoom",
-                      yaxis=dict(fixedrange=False, autorange=True))
-    fig.update_xaxes(tickangle=-45)
-    st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True,
-                                                          "modeBarButtonsToAdd":["autoScale2d"]})
+    # 3.1: resumen mensual agregado
+    monthly = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
+    monthly['etiqueta'] = monthly['nombre_mes']
+    fig_mon = px.line(monthly, x='etiqueta', y=['planificados','reales'],
+                      labels={'value':'Volumen','etiqueta':'Mes','variable':'Tipo'},
+                      color_discrete_map={'planificados':'orange','reales':'blue'},
+                      title="📊 Contactos por Mes")
+    fig_mon.update_traces(line=dict(width=2))
+    fig_mon.update_layout(hovermode="x unified",
+                          dragmode="zoom",
+                          yaxis=dict(fixedrange=False, autorange=True))
+    fig_mon.update_xaxes(tickangle=-45)
+    st.plotly_chart(fig_mon, use_container_width=True, config={"scrollZoom": True})
 
-    # **Nuevo** heatmap de granularidad por intervalo vs mes
-    st.subheader("📊 Heatmap: Promedio de Contactos por Intervalo y Mes")
-    heat_mes = df.pivot_table(index='intervalo',
-                              columns='nombre_mes',
-                              values='reales',
-                              aggfunc='mean')
-    fig_hm = px.imshow(heat_mes,
-                       labels=dict(x="Mes", y="Intervalo", color="Reales"),
-                       aspect="auto")
-    st.plotly_chart(fig_hm, use_container_width=True)
+    # 3.2: detalle por intervalo del mes seleccionado
+    mes_sel = st.selectbox("Detalle de intervalo: elige mes", list(monthly['nombre_mes']))
+    df_m = df[df['nombre_mes']==mes_sel]
+    detail_m = df_m.groupby('intervalo')[['planificados','reales']].sum().reset_index()
+    fig_detm = px.line(detail_m, x='intervalo', y=['planificados','reales'],
+                       labels={'value':'Volumen','intervalo':'Intervalo','variable':'Tipo'},
+                       color_discrete_map={'planificados':'orange','reales':'blue'},
+                       title=f"🔍 Detalle Intervalos Mes {mes_sel}")
+    fig_detm.update_traces(line=dict(width=2))
+    fig_detm.update_layout(xaxis=dict(tickangle=45), hovermode="x unified")
+    st.plotly_chart(fig_detm, use_container_width=True)
 
 # 4. Análisis adicional (sin cambios)
 st.subheader("📉 Desvío Promedio por Intervalo")
@@ -128,18 +128,14 @@ plt.xticks(rotation=45)
 st.pyplot(fig2)
 
 st.subheader("🔥 Heatmap: Desvío por Día de la Semana y Intervalo")
-heat = df.pivot_table(values='desvio_%',
-                      index='intervalo',
-                      columns='dia_semana',
-                      aggfunc='mean')
+heat = df.pivot_table(values='desvio_%', index='intervalo', columns='dia_semana', aggfunc='mean')
 fig3, ax3 = plt.subplots(figsize=(10,6))
 sns.heatmap(heat, cmap="coolwarm", center=0, ax=ax3)
 ax3.set_title("Heatmap % Desvío")
 st.pyplot(fig3)
 
 st.subheader("📆 Proyección Ajustes (23/06 - 29/06)")
-aj = df.groupby(['dia_semana','intervalo'])['desvio_%']\
-       .mean().reset_index()
+aj = df.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
 aj['ajuste_sugerido'] = aj['desvio_%'].round(2)/100
 aj['semana_obj'] = "2025-06-23 al 2025-06-29"
 aj = aj[['semana_obj','dia_semana','intervalo','ajuste_sugerido']]
