@@ -91,11 +91,11 @@ elif vista == "Semana":
     st.dataframe(sem_totales)
 
     # ─ Curva horaria promedio diario en cada semana
-    #   1) sumamos por semana+hora
-    #   2) contamos cuántos días tiene cada semana
-    sum_wk = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].sum()
-    days_wk = df.groupby('semana_iso')['fecha'].dt.date.nunique()
-    sum_wk = sum_wk.reset_index().merge(days_wk.rename('dias'), on='semana_iso')
+    #   1) sumas por semana+hora
+    #   2) días únicos por semana
+    sum_wk = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].sum().reset_index()
+    days_wk = df.assign(dia=df['fecha'].dt.date).groupby('semana_iso')['dia'].nunique().rename('dias')
+    sum_wk = sum_wk.merge(days_wk, on='semana_iso')
     sum_wk['planif_avg'] = sum_wk['planificados'] / sum_wk['dias']
     sum_wk['real_avg']   = sum_wk['reales']      / sum_wk['dias']
 
@@ -134,9 +134,9 @@ else:  # Mes
     st.dataframe(m_totales)
 
     # ─ Curva horaria promedio diario en cada mes
-    sum_m = df.groupby(['nombre_mes','intervalo'])[['planificados','reales']].sum()
-    days_m = df.groupby('nombre_mes')['fecha'].dt.date.nunique()
-    sum_m = sum_m.reset_index().merge(days_m.rename('dias'), on='nombre_mes')
+    sum_m = df.groupby(['nombre_mes','intervalo'])[['planificados','reales']].sum().reset_index()
+    days_m = df.assign(dia=df['fecha'].dt.date).groupby('nombre_mes')['dia'].nunique().rename('dias')
+    sum_m = sum_m.merge(days_m, on='nombre_mes')
     sum_m['planif_avg'] = sum_m['planificados'] / sum_m['dias']
     sum_m['real_avg']   = sum_m['reales']      / sum_m['dias']
 
@@ -166,7 +166,7 @@ else:  # Mes
     )
 
 # ────────────────────────────────────────────────
-# 4. Análisis adicional
+# 4. Análisis adicional (sin cambios)
 # ────────────────────────────────────────────────
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
