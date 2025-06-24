@@ -38,7 +38,6 @@ df['nombre_mes'] = df['fecha'].dt.strftime('%B')
 df['desvio']     = df['reales'] - df['planificados']
 df['desvio_%']   = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
 
-# Orden de días
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
 
@@ -83,38 +82,41 @@ if vista == "Día":
     )
 
 # ────────────────────────────────────────────────
-# 3.2 VISTA SEMANA: sumas + curva horaria promedio diario
+# 3.2 VISTA SEMANA: totales + curva horaria promedio diario
 # ────────────────────────────────────────────────
 elif vista == "Semana":
-    # Totales semanales (sumas)
+    # ─ Totales semanales (sumas)
     sem_totales = df.groupby('semana_iso')[['planificados','reales']].sum().reset_index()
     st.markdown("**Totales por Semana ISO**")
     st.dataframe(sem_totales)
 
-    # Curva horaria promedio diario por semana (medias)
-    weekly_detail = (
-        df.groupby(['semana_iso','intervalo'])[['planificados','reales']]
-          .mean()
-          .reset_index()
-    )
+    # ─ Curva horaria promedio diario en cada semana
+    #   1) sumamos por semana+hora
+    #   2) contamos cuántos días tiene cada semana
+    sum_wk = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].sum()
+    days_wk = df.groupby('semana_iso')['fecha'].dt.date.nunique()
+    sum_wk = sum_wk.reset_index().merge(days_wk.rename('dias'), on='semana_iso')
+    sum_wk['planif_avg'] = sum_wk['planificados'] / sum_wk['dias']
+    sum_wk['real_avg']   = sum_wk['reales']      / sum_wk['dias']
+
     fig_week = px.line(
-        weekly_detail,
-        x='intervalo', y=['planificados','reales'],
+        sum_wk,
+        x='intervalo', 
+        y=['planif_avg','real_avg'],
         facet_col='semana_iso', facet_col_wrap=4,
         labels={
             'intervalo':'Hora',
-            'value':'Prom. Contactos por día',
+            'value':'Prom. diarios',
             'variable':'Tipo',
             'semana_iso':'Semana ISO'
         },
-        color_discrete_map={'planificados':'orange','reales':'blue'},
+        color_discrete_map={'planif_avg':'orange','real_avg':'blue'},
         title="📆 Curva horaria promedio diario por Semana"
     )
     fig_week.update_traces(line=dict(width=2))
     fig_week.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
     fig_week.update_layout(showlegend=False, hovermode="x unified")
-    # activar leyenda solo una vez
-    fig_week.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
+    fig_week.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='real_avg' else None)
 
     st.plotly_chart(
         fig_week,
@@ -123,37 +125,39 @@ elif vista == "Semana":
     )
 
 # ────────────────────────────────────────────────
-# 3.3 VISTA MES: sumas + curva horaria promedio diario
+# 3.3 VISTA MES: totales + curva horaria promedio diario
 # ────────────────────────────────────────────────
-else:  # vista == "Mes"
-    # Totales mensuales (sumas)
-    monthly_tot = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
+else:  # Mes
+    # ─ Totales mensuales (sumas)
+    m_totales = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
     st.markdown("**Totales por Mes**")
-    st.dataframe(monthly_tot)
+    st.dataframe(m_totales)
 
-    # Curva horaria promedio diario por mes (medias)
-    monthly_detail = (
-        df.groupby(['nombre_mes','intervalo'])[['planificados','reales']]
-          .mean()
-          .reset_index()
-    )
+    # ─ Curva horaria promedio diario en cada mes
+    sum_m = df.groupby(['nombre_mes','intervalo'])[['planificados','reales']].sum()
+    days_m = df.groupby('nombre_mes')['fecha'].dt.date.nunique()
+    sum_m = sum_m.reset_index().merge(days_m.rename('dias'), on='nombre_mes')
+    sum_m['planif_avg'] = sum_m['planificados'] / sum_m['dias']
+    sum_m['real_avg']   = sum_m['reales']      / sum_m['dias']
+
     fig_month = px.line(
-        monthly_detail,
-        x='intervalo', y=['planificados','reales'],
+        sum_m,
+        x='intervalo',
+        y=['planif_avg','real_avg'],
         facet_col='nombre_mes', facet_col_wrap=4,
         labels={
             'intervalo':'Hora',
-            'value':'Prom. Contactos por día',
+            'value':'Prom. diarios',
             'variable':'Tipo',
             'nombre_mes':'Mes'
         },
-        color_discrete_map={'planificados':'orange','reales':'blue'},
+        color_discrete_map={'planif_avg':'orange','real_avg':'blue'},
         title="📊 Curva horaria promedio diario por Mes"
     )
     fig_month.update_traces(line=dict(width=2))
     fig_month.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
     fig_month.update_layout(showlegend=False, hovermode="x unified")
-    fig_month.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
+    fig_month.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='real_avg' else None)
 
     st.plotly_chart(
         fig_month,
@@ -162,7 +166,7 @@ else:  # vista == "Mes"
     )
 
 # ────────────────────────────────────────────────
-# 4. Análisis adicional (manteniendo tu código original)
+# 4. Análisis adicional
 # ────────────────────────────────────────────────
 st.subheader("📉 Desvío Promedio por Intervalo")
 interval_avg = df.groupby('intervalo')['desvio_%'].mean().sort_index()
