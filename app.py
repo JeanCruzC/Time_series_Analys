@@ -34,7 +34,7 @@ df['mes'] = df['fecha'].dt.month
 df['nombre_mes'] = df['fecha'].dt.strftime('%B')
 df['desvio'] = df['reales'] - df['planificados']
 df['desvio_%'] = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
-# orden de días
+# Orden de días
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
 
@@ -48,20 +48,29 @@ _df_last = df[df['semana_iso']==ultima_sem].copy()
 _df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 serie_last = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
-# ─────────── 3. Ajustes sugeridos ───────────
+# ─────────── 3. Ajustes sugeridos con combinación ───────────
 st.subheader("📆 Ajustes sugeridos")
 semanas = sorted(df['semana_iso'].unique())
-sem_sel = st.selectbox("Selecciona Semana ISO:", semanas, index=len(semanas)-1)
-df_sem = df[df['semana_iso']==sem_sel]
-aj = (
-    df_sem
-    .groupby(['dia_semana','intervalo'])['desvio_%']
-    .mean()
-    .reset_index()
-)
-aj['ajuste_sugerido'] = (1 - aj['desvio_%']/100).round(4)
-st.write(f"**Semana ISO {sem_sel}**")
-st.dataframe(aj, use_container_width=True)
+sem_sel = st.selectbox("Selecciona Semana ISO para ajuste:", semanas, index=len(semanas)-1)
+k = st.slider("Número de semanas históricas para suavizar", 1, min(4, len(semanas)-1), 3)
+alpha = st.slider("Peso para la semana seleccionada", 0.0, 1.0, 0.6)
+
+# desviación de la semana seleccionada
+df_cur = df[df['semana_iso']==sem_sel]
+cur = df_cur.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index().rename(columns={'desvio_%':'desvio_cur'})
+
+# promedio de las k semanas anteriores
+prev_weeks = [w for w in semanas if w < sem_sel][-k:]
+df_prev = df[df['semana_iso'].isin(prev_weeks)]
+prev = df_prev.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index().rename(columns={'desvio_%':'desvio_prev'})
+
+# combinar y calcular ajuste
+aj = pd.merge(cur, prev, on=['dia_semana','intervalo'], how='left').fillna(0)
+aj['desvio_comb'] = alpha * aj['desvio_cur'] + (1-alpha) * aj['desvio_prev']
+aj['ajuste_sugerido'] = (1 - aj['desvio_comb']/100).round(4)
+
+st.write(f"**Semana ISO {sem_sel}**, usando promedio de semanas {prev_weeks}")
+st.dataframe(aj[['dia_semana','intervalo','desvio_cur','desvio_prev','desvio_comb','ajuste_sugerido']], use_container_width=True)
 csv_aj = aj.to_csv(index=False).encode('utf-8')
 st.download_button(
     "📥 Descargar ajustes (.csv)",
@@ -134,7 +143,6 @@ if vista=='Día':
     fig.update_layout(hovermode="x unified")
     st.plotly_chart(fig, use_container_width=True)
 
-    # anomalías
     decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=48)
     resid = decomp.resid.dropna()
     anoms = resid[np.abs(resid) > 3*resid.std()]
@@ -174,7 +182,6 @@ elif vista=='Semana':
     st.plotly_chart(fig_anom, use_container_width=True)
 
 else:  # Mes
-    # promedio diario por hora para cada mes
     daily_m = (
         df.assign(dia=df['fecha'].dt.date)
           .groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']]
