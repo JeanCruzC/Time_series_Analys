@@ -50,13 +50,13 @@ df_last = df[df['semana_iso'] == ultima_sem].copy()
 df_last['_dt'] = df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 serie_last = df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
-# ─────────── 2.3 Ajustes sugeridos ───────────
+# ─────────── 3. Ajustes sugeridos ───────────
 ajustes = df_last.groupby(['dia_semana','intervalo'])['desvio_%'].mean().reset_index()
 ajustes['ajuste_sugerido'] = ajustes['desvio_%'].round(2) / 100
 st.subheader(f"📆 Ajustes sugeridos - Semana ISO {ultima_sem}")
 st.dataframe(ajustes, use_container_width=True)
 
-# ─────────── 3. KPIs de Error ───────────
+# ─────────── 4. KPIs de Error ───────────
 st.subheader("🔢 KPIs de Planificación vs. Realidad")
 y_true_all, y_pred_all = serie_continua['reales'], serie_continua['planificados']
 mae_all  = mean_absolute_error(y_true_all, y_pred_all)
@@ -81,16 +81,16 @@ elif mape_w > mape_all:
 else:
     st.success("Buen alineamiento planificado vs real.")
 
-# ─────────── 4. Tabla de errores por intervalo ───────────
+# ─────────── 5. Tabla de errores por intervalo ───────────
 st.subheader("📋 Intervalos con mayor error")
 opcion = st.selectbox("Mostrar errores de:", ["Total","Última Semana"])
 errors = serie_continua.copy() if opcion == "Total" else serie_last.copy()
 errors['error_abs'] = np.abs(errors['reales'] - errors['planificados'])
-errors['error_pct'] = np.abs((errors['reales'] - errors['planificados']) / errors['planificados'].replace(0, np.nan)) * 100
-errors_tab = errors.reset_index().groupby('_dt')[['error_abs','error_pct']].mean()
-st.dataframe(errors_tab.sort_values('error_abs', ascending=False).head(10))
+errors['MAPE'] = np.abs((errors['reales'] - errors['planificados']) / errors['planificados'].replace(0, np.nan)) * 100
+errors_tab = errors.reset_index().groupby('_dt')[['error_abs','MAPE']].mean()
+st.dataframe(errors_tab.sort_values('MAPE', ascending=False).head(10))
 
-# ─────────── 5. Heatmap de desvíos ───────────
+# ─────────── 6. Heatmap de desvíos ───────────
 st.subheader("🔥 Heatmap: Desvío % por Intervalo y Día de la Semana")
 heat = df.pivot_table(index='intervalo', columns='dia_semana', values='desvio_%', aggfunc='mean')
 fig3, ax3 = plt.subplots(figsize=(10,6))
@@ -98,7 +98,7 @@ sns.heatmap(heat, cmap='coolwarm', center=0, ax=ax3)
 ax3.set_title('Heatmap Desvío %')
 st.pyplot(fig3)
 
-# ─────────── 6. Vistas interactivas con anomalías ───────────
+# ─────────── 7. Vistas interactivas con anomalías ───────────
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ['Día','Semana','Mes'])
 if vista == 'Día':
@@ -109,7 +109,6 @@ if vista == 'Día':
         color_discrete_map={'planificados':'orange','reales':'blue'}
     )
     st.plotly_chart(fig, use_container_width=True)
-    # Anomalías Día
     decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=24)
     resid = decomp.resid.dropna(); sigma = resid.std(); anoms = resid[np.abs(resid) > 3*sigma]
     fig_anom = px.line(
