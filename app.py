@@ -28,12 +28,12 @@ df = df.rename(columns={
 })
 df['fecha'] = pd.to_datetime(df['fecha'])
 df['intervalo'] = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
-df['dia_semana'] = df['fecha'].dt.day_name()
-df['semana_iso'] = df['fecha'].dt.isocalendar().week
-df['mes'] = df['fecha'].dt.month
-df['nombre_mes'] = df['fecha'].dt.strftime('%B')
-df['desvio'] = df['reales'] - df['planificados']
-df['desvio_%'] = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
+df['dia_semana']  = df['fecha'].dt.day_name()
+df['semana_iso']  = df['fecha'].dt.isocalendar().week
+df['mes']         = df['fecha'].dt.month
+df['nombre_mes']  = df['fecha'].dt.strftime('%B')
+df['desvio']      = df['reales'] - df['planificados']
+df['desvio_%']    = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
 
@@ -43,29 +43,54 @@ serie_continua = df.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
 # ─────────── 2.2 Última semana ───────────
 ultima_sem = df['semana_iso'].max()
-_df_last = df[df['semana_iso'] == ultima_sem].copy()
+_df_last = df[df['semana_iso']==ultima_sem].copy()
 _df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 serie_last = _df_last.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
-# ─────────── 3. Ajustes sugeridos para la próxima semana ───────────
+# ─────────── 3. Mejor práctica: combinación ponderada ───────────
+# Parámetros fijos
+N = 3              # número de semanas previas a promediar
+alpha = 0.7        # peso para la última semana
+
 proxima_sem = ultima_sem + 1
-ajustes = (
+
+# desviación de la última semana
+cur = (
     _df_last
     .groupby(['dia_semana','intervalo'])['desvio_%']
     .mean()
     .reset_index()
+    .rename(columns={'desvio_%':'desvio_cur'})
 )
-# si desvío_ % = -71.43 → ajuste = 1 - (-71.43/100) = 1 + 0.7143 = 1.7143 → 171%
-# si desvío_% = +45.0  → ajuste = 1 - (45.0/100)  = 1 - 0.45   = 0.55  → 55%
-ajustes['ajuste_sugerido'] = (1 - ajustes['desvio_%'] / 100).round(4)
-# mostrar como porcentaje
-ajustes['ajuste_sugerido'] = ajustes['ajuste_sugerido'].map(lambda x: f"{x*100:.0f}%")
+
+# promedio de las N semanas anteriores
+prev_weeks = [w for w in sorted(df['semana_iso'].unique()) if w < ultima_sem][-N:]
+df_prev = df[df['semana_iso'].isin(prev_weeks)]
+prev = (
+    df_prev
+    .groupby(['dia_semana','intervalo'])['desvio_%']
+    .mean()
+    .reset_index()
+    .rename(columns={'desvio_%':'desvio_prev'})
+)
+
+# combinación ponderada
+aj = pd.merge(cur, prev, on=['dia_semana','intervalo'], how='left')
+aj['desvio_prev'] = aj['desvio_prev'].fillna(0)
+aj['desvio_comb'] = alpha * aj['desvio_cur'] + (1-alpha) * aj['desvio_prev']
+
+# factor de ajuste: 1 + desvio_comb/100
+aj['ajuste_sugerido'] = (1 + aj['desvio_comb']/100).round(4)
+# formatear como porcentaje
+aj['ajuste_sugerido'] = aj['ajuste_sugerido'].map(lambda x: f"{x*100:.0f}%")
 
 st.subheader(f"📆 Ajustes sugeridos para Semana ISO {proxima_sem}")
-st.write(f"(basados en resultados de la semana {ultima_sem})")
-st.dataframe(ajustes, use_container_width=True)
-
-csv_aj = ajustes.to_csv(index=False).encode('utf-8')
+st.write(f"Combinación ponderada: {alpha*100:.0f}% última semana + {(1-alpha)*100:.0f}% promedio semanas {prev_weeks}")
+st.dataframe(
+    aj[['dia_semana','intervalo','desvio_cur','desvio_prev','desvio_comb','ajuste_sugerido']],
+    use_container_width=True
+)
+csv_aj = aj.to_csv(index=False).encode('utf-8')
 st.download_button(
     "📥 Descargar ajustes (.csv)",
     data=csv_aj,
@@ -75,15 +100,15 @@ st.download_button(
 
 # ─────────── 4. KPIs de Error ───────────
 st.subheader("🔢 KPIs de Planificación vs. Realidad")
-y_t_all, y_p_all = serie_continua['reales'], serie_continua['planificados']
-mae_all  = mean_absolute_error(y_t_all, y_p_all)
-rmse_all = np.sqrt(mean_squared_error(y_t_all, y_p_all))
-mape_all = np.mean(np.abs((y_t_all - y_p_all) / y_t_all.replace(0, np.nan))) * 100
+y_true_all, y_pred_all = serie_continua['reales'], serie_continua['planificados']
+mae_all  = mean_absolute_error(y_true_all, y_pred_all)
+rmse_all = np.sqrt(mean_squared_error(y_true_all, y_pred_all))
+mape_all = np.mean(np.abs((y_true_all - y_pred_all) / y_true_all.replace(0, np.nan))) * 100
 
-y_t_w, y_p_w = serie_last['reales'], serie_last['planificados']
-mae_w  = mean_absolute_error(y_t_w, y_p_w)
-rmse_w = np.sqrt(mean_squared_error(y_t_w, y_p_w))
-mape_w = np.mean(np.abs((y_t_w - y_p_w) / y_t_w.replace(0, np.nan))) * 100
+y_true_w, y_pred_w = serie_last['reales'], serie_last['planificados']
+mae_w  = mean_absolute_error(y_true_w, y_pred_w)
+rmse_w = np.sqrt(mean_squared_error(y_true_w, y_pred_w))
+mape_w = np.mean(np.abs((y_true_w - y_pred_w) / y_true_w.replace(0, np.nan))) * 100
 
 st.markdown(
     f"- **MAE:** Total={mae_all:.0f}, Semana={mae_w:.0f}  \n"
