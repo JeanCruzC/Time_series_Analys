@@ -9,7 +9,7 @@ import datetime
 st.set_page_config(layout="wide")
 st.title("📈 Análisis de Contactos y Ajustes por Intervalo – Día / Semana / Mes")
 
-# ─────────────── 1. Carga ───────────────
+# 1. Carga
 file = st.file_uploader("📂 Carga tu archivo histórico (CSV o Excel)", type=["csv","xlsx"])
 if not file:
     st.stop()
@@ -22,7 +22,7 @@ df = df.rename(columns={
     'contactos':'reales'
 })
 
-# ─────────────── 2. Preprocesamiento ───────────────
+# 2. Preprocesamiento
 df['fecha']      = pd.to_datetime(df['fecha'])
 df['intervalo']  = pd.to_datetime(df['intervalo'], format="%H:%M:%S").dt.time
 df['dt']         = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
@@ -37,10 +37,10 @@ dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sun
 df['dia_semana'] = pd.Categorical(df['fecha'].dt.day_name(),
                                   categories=dias_orden, ordered=True)
 
-# guardo para el análisis final
+# Copia para análisis final
 df_main = df.copy()
 
-# ─────────────── 3. Vista interactiva ───────────────
+# 3. Vista interactiva
 vista = st.selectbox("🔎 Ver por:", ["Día","Semana","Mes"])
 
 if vista == "Día":
@@ -57,10 +57,10 @@ if vista == "Día":
         tickformat='%Y-%m-%d<br>%H:%M',
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
-            dict(count=6,  label="6h",  step="hour", stepmode="backward"),
-            dict(count=12, label="12h", step="hour", stepmode="backward"),
-            dict(count=1,  label="1d",  step="day",  stepmode="backward"),
-            dict(step="all",label="Todo")
+            dict(count=6,  label="6h",  step="hour",   stepmode="backward"),
+            dict(count=12, label="12h", step="hour",   stepmode="backward"),
+            dict(count=1,  label="1d",  step="day",    stepmode="backward"),
+            dict(step="all", label="Todo")
         ])
     )
     fig.update_layout(hovermode="x unified", dragmode="zoom")
@@ -69,12 +69,10 @@ if vista == "Día":
 
 elif vista == "Semana":
     st.subheader("📆 Contactos por Semana ISO (Interactivo)")
-
-    # 3.1 Creamos una fecha de inicio de semana para graficar un eje continuo
+    # agrupo por lunes de cada semana
     df['semana_inicio'] = df['fecha'] - pd.to_timedelta(df['fecha'].dt.weekday, unit='d')
     weekly = df.groupby('semana_inicio')[['planificados','reales']].sum().reset_index()
 
-    # 3.2 Gráfica interactiva con rangeselector y slider
     fig_wk = px.line(
         weekly, x='semana_inicio', y=['planificados','reales'],
         labels={'semana_inicio':'Semana (lunes)','value':'Volumen','variable':'Tipo'},
@@ -86,8 +84,8 @@ elif vista == "Semana":
         tickformat='%Y-%m-%d',
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
-            dict(count=2, label="2w", step="week", stepmode="backward"),
-            dict(count=4, label="4w", step="week", stepmode="backward"),
+            dict(count=14, label="2w", step="day",  stepmode="backward"),
+            dict(count=28, label="4w", step="day",  stepmode="backward"),
             dict(step="all", label="Todo")
         ])
     )
@@ -99,7 +97,6 @@ elif vista == "Semana":
 else:
     st.subheader("📊 Contactos por Mes (Interactivo)")
     monthly = df.groupby('nombre_mes')[['planificados','reales']].sum().reset_index()
-    # convertimos nombre_mes en orden cronológico
     meses_orden = ['January','February','March','April','May','June',
                    'July','August','September','October','November','December']
     monthly['nombre_mes'] = pd.Categorical(monthly['nombre_mes'],
@@ -117,7 +114,7 @@ else:
     st.plotly_chart(fig_mon, use_container_width=True,
                     config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
-# ─────────────── 4. Análisis Adicional ───────────────
+# 4. Análisis adicional
 st.subheader("📉 Desvío Promedio por Intervalo")
 int_avg = df_main.groupby('intervalo')['desvio_%'].mean().sort_index()
 fig4, ax4 = plt.subplots(figsize=(12,4))
