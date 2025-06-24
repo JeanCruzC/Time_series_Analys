@@ -44,12 +44,28 @@ df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, order
 df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 serie_continua = df.groupby('dt')[['planificados','reales']].sum().sort_index()
 
+# ─────────── 2.2 Última semana de datos ───────────
+last_week = df['semana_iso'].max()
+df_last = df[df['semana_iso'] == last_week]
+serie_last = df_last.groupby('dt')[['planificados','reales']].sum().sort_index()
+
+# ─────────── 2.3 Proyección de ajustes última semana ───────────
+aj = (
+    df_last.groupby(['dia_semana','intervalo'])['desvio_%']
+          .mean()
+          .reset_index()
+)
+aj['ajuste_sugerido'] = (aj['desvio_%'].round(2)) / 100
+aj['semana_obj'] = f"Semana ISO {last_week}"
+st.subheader(f"📆 Ajustes sugeridos para la Semana ISO {last_week}")
+st.dataframe(aj, use_container_width=True)
+
 # ─────────── 3. Selector de Vista ───────────
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día","Semana","Mes"])
 
 # ────────────────────────────────────────────────
-# 3.1 VISTA DÍA (sumas) ────────────────────────────────────────────────
+# 3.1 VISTA DÍA (sumas reales vs planificados) ────────────────────────────────────────────────
 if vista == "Día":
     fig_day = px.line(
         serie_continua.reset_index(), x='dt', y=['planificados','reales'],
@@ -73,54 +89,60 @@ if vista == "Día":
     st.plotly_chart(fig_day, use_container_width=True, config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
 # ────────────────────────────────────────────────
-# 3.2 VISTA SEMANA: anomalías y KPIs no aplican en vista, solo curva horaria sumas ────────────────────────────────────────────────
+# 3.2 VISTA SEMANA (sumas semanales vs curva horaria promedio diario) ────────────────────────────────────────────────
 elif vista == "Semana":
-    weekly_detail = df.groupby(['semana_iso','intervalo'])[['planificados','reales']].sum().reset_index()
+    # Totales semanales
+    sem_totales = df_last.groupby('semana_iso')[['planificados','reales']].sum().reset_index()
+    st.markdown(f"**Totales Semana ISO {last_week}**")
+    st.bar_chart(sem_totales.set_index('semana_iso'))
+    
+    # Curva horaria promedio diario
+    daily = (
+        df_last.assign(dia=df_last['fecha'].dt.date)
+               .groupby(['dia','intervalo'])[['planificados','reales']]
+               .sum()
+               .reset_index()
+    )
+    weekly_avg = daily.groupby('intervalo')[['planificados','reales']].mean().reset_index()
     fig_week = px.line(
-        weekly_detail, x='intervalo', y=['planificados','reales'],
-        facet_col='semana_iso', facet_col_wrap=4,
-        labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo','semana_iso':'Semana ISO'},
+        weekly_avg, x='intervalo', y=['planificados','reales'],
+        labels={'intervalo':'Hora','value':'Promedio diario','variable':'Tipo'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📆 Curva horaria por Semana (00:00–23:59)"
+        title="📆 Curva horaria promedio diario Semana ISO {last_week}"
     )
     fig_week.update_traces(line=dict(width=2))
-    fig_week.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
-    fig_week.update_layout(showlegend=False, hovermode="x unified")
-    fig_week.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
-    st.plotly_chart(fig_week,use_container_width=True,config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
+    fig_week.update_xaxes(tickformat='%H:%M', fixedrange=False)
+    fig_week.update_layout(hovermode="x unified")
+    st.plotly_chart(fig_week, use_container_width=True, config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
 # ────────────────────────────────────────────────
-# 3.3 VISTA MES: sumas + curva horaria promedio diario ────────────────────────────────────────────────
+# 3.3 VISTA MES: totales mensuales vs curva horaria promedio diario
+# ────────────────────────────────────────────────
 else:
-    # Totales mensuales
-    monthly = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
-    fig_mon = px.line(
-        monthly, x='nombre_mes', y=['planificados','reales'],
-        labels={'nombre_mes':'Mes','value':'Volumen','variable':'Tipo'},
-        color_discrete_map={'planificados':'orange','reales':'blue'},
-        title="📊 Contactos por Mes (Totales)"
-    )
-    fig_mon.update_traces(line=dict(width=2))
-    fig_mon.update_xaxes(tickangle=-45)
-    st.plotly_chart(fig_mon,use_container_width=True,config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
+    # Totales por mes\m    monthly = df.groupby(['mes','nombre_mes'])[['planificados','reales']].sum().reset_index()
+    st.markdown("**Totales por Mes**")
+    st.bar_chart(monthly.set_index('nombre_mes')[['planificados','reales']])
 
-    # Curva promedio diario
-    days_mes = df.groupby('mes')['fecha'].dt.date.nunique().to_dict()
-    daily_month = df.groupby(['nombre_mes','intervalo'])[['planificados','reales']].sum().reset_index()
-    daily_month['planificados'] = daily_month.apply(lambda r: r['planificados']/days_mes[df[df['nombre_mes']==r['nombre_mes']]['mes'].iloc[0]], axis=1)
-    daily_month['reales'] = daily_month.apply(lambda r: r['reales']/days_mes[df[df['nombre_mes']==r['nombre_mes']]['mes'].iloc[0]], axis=1)
-    fig_mon_avg = px.line(
-        daily_month, x='intervalo', y=['planificados','reales'],
-        facet_col='nombre_mes', facet_col_wrap=2,
+    # Curva horaria promedio diario por mes
+    daily_month = (
+        df.assign(dia=df['fecha'].dt.date)
+          .groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']]
+          .sum()
+          .reset_index()
+    )
+    monthly_avg = daily_month.groupby(['nombre_mes','intervalo'])[['planificados','reales']].mean().reset_index()
+    fig_mon = px.line(
+        monthly_avg, x='intervalo', y=['planificados','reales'],
+        facet_col='nombre_mes', facet_col_wrap=3,
         labels={'intervalo':'Hora','value':'Promedio diario','variable':'Tipo','nombre_mes':'Mes'},
         color_discrete_map={'planificados':'orange','reales':'blue'},
         title="🌙 Curva horaria promedio diario por Mes (00:00–23:59)"
     )
-    fig_mon_avg.update_traces(line=dict(width=2))
-    fig_mon_avg.update_xaxes(tickformat='%H:%M', matches=None, fixedrange=False)
-    fig_mon_avg.update_layout(showlegend=False, hovermode="x unified")
-    fig_mon_avg.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
-    st.plotly_chart(fig_mon_avg,use_container_width=True,config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
+    fig_mon.update_traces(line=dict(width=2))
+    fig_mon.update_xaxes(tickformat='%H:%M', fixedrange=False)
+    fig_mon.update_layout(showlegend=False, hovermode="x unified")
+    fig_mon.for_each_trace(lambda t: t.update(showlegend=True) if t.name=='reales' else None)
+    st.plotly_chart(fig_mon, use_container_width=True, config={"scrollZoom":True,"modeBarButtonsToAdd":["autoScale2d"]})
 
 # ────────────────────────────────────────────────
 # 4. Desvío Promedio por Intervalo
@@ -146,62 +168,44 @@ ax3.set_title("Heatmap % Desvío")
 st.pyplot(fig3)
 
 # ────────────────────────────────────────────────
-# 6. KPIs de Error (MAE, RMSE, MAPE)
+# 6. KPIs de Error por última semana (MAE, RMSE, MAPE)
 # ────────────────────────────────────────────────
-kpi_data = serie_continua.reset_index()
-y_true = kpi_data['reales']
-y_pred = kpi_data['planificados']
+kp = serie_last.reset_index()
+y_true = kp['reales']
+y_pred = kp['planificados']
 
-mae = mean_absolute_error(y_true, y_pred)
+mae  = mean_absolute_error(y_true, y_pred)
 rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-mape = np.mean(np.abs((y_true - y_pred)/y_pred.replace(0, np.nan))) * 100
+mape = np.mean(np.abs((y_true - y_pred) / y_pred.replace(0, np.nan))) * 100
 
-st.subheader("🔢 KPIs de Error por Intervalo")
+st.subheader("🔢 KPIs de Error - Última Semana (ISO {last_week})")
 st.markdown(f"- **MAE:** {mae:,.0f} contactos  \n"
             f"- **RMSE:** {rmse:,.0f} contactos  \n"
             f"- **MAPE:** {mape:.2f}%")
 
-# Gráficas de error
-grid = plt.subplots(1,2,figsize=(14,4))
-fig_kpi, axes = grid
-kpi_data['error_abs'] = np.abs(y_true - y_pred)
-kpi_data['error_pct'] = np.abs((y_true - y_pred)/y_pred.replace(0, np.nan)) * 100
-
-axes[0].bar(kpi_data['dt'], kpi_data['error_abs'])
-axes[0].set_title("Error Absoluto por Intervalo")
-axes[0].set_ylabel("Contactos")
-axes[0].tick_params(axis='x', rotation=45)
-
-axes[1].bar(kpi_data['dt'], kpi_data['error_pct'])
-axes[1].set_title("MAPE por Intervalo")
-axes[1].set_ylabel("% Error")
-axes[1].tick_params(axis='x', rotation=45)
-
-st.pyplot(fig_kpi)
-
 # ────────────────────────────────────────────────
-# 7. Anomalías (residual > 3σ)
+# 7. Detección de Anomalías última semana
 # ────────────────────────────────────────────────
 period = df['intervalo'].nunique()
-decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=period, extrapolate_trend='freq')
-resid = decomp.resid.dropna()
-sigma = resid.std()
-anoms = resid[np.abs(resid) > 3*sigma]
+decomp_last = seasonal_decompose(serie_last['planificados'], model='additive', period=period, extrapolate_trend='freq')
+resid_last = decomp_last.resid.dropna()
+sigma_last = resid_last.std()
+anoms_last = resid_last[np.abs(resid_last) > 3*sigma_last]
 
-fig_anom = px.line(serie_continua.reset_index(), x='dt', y='planificados', labels={'dt':'Fecha-Hora','planificados':'Planificados'}, title="🔴 Anomalías en Planificados")
-fig_anom.add_scatter(x=anoms.index, y=serie_continua.loc[anoms.index,'planificados'], mode='markers', marker=dict(color='red',size=6), name='Anomalías')
+fig_anom = px.line(serie_last.reset_index(), x='dt', y='planificados', labels={'dt':'Fecha-Hora','planificados':'Planificados'}, title="🔴 Anomalías - Última Semana")
+fig_anom.add_scatter(x=anoms_last.index, y=serie_last.loc[anoms_last.index,'planificados'], mode='markers', marker=dict(color='red', size=6), name='Anomalías')
 fig_anom.update_layout(hovermode="x unified")
-st.plotly_chart(fig_anom,use_container_width=True,config={"scrollZoom":True})
+st.plotly_chart(fig_anom, use_container_width=True, config={"scrollZoom":True})
 
 # ────────────────────────────────────────────────
-# 8. Descomposición de Serie Temporal
+# 8. Descomposición última semana
 # ────────────────────────────────────────────────
-st.subheader("🔍 Descomposición de Serie Temporal (Planificados)")
-fig_dec, axes = plt.subplots(4,1,figsize=(12,10),sharex=True)
-axes[0].plot(decomp.observed);  axes[0].set_ylabel("Observado")
-axes[1].plot(decomp.trend);     axes[1].set_ylabel("Tendencia")
-axes[2].plot(decomp.seasonal);  axes[2].set_ylabel("Estacional")
-axes[3].plot(decomp.resid);     axes[3].set_ylabel("Residuo")
-axes[3].set_xlabel("Fecha y Hora")
+st.subheader("🔍 Descomposición - Última Semana (Planificados)")
+fig_dec, axs = plt.subplots(4,1, figsize=(12,10), sharex=True)
+axs[0].plot(decomp_last.observed);  axs[0].set_ylabel("Observado")
+axs[1].plot(decomp_last.trend);     axs[1].set_ylabel("Tendencia")
+axs[2].plot(decomp_last.seasonal);  axs[2].set_ylabel("Estacional")
+axs[3].plot(deomp_last.resid);      axs[3].set_ylabel("Residuo")
+axs[3].set_xlabel("Fecha y Hora")
 fig_dec.tight_layout()
 st.pyplot(fig_dec)
