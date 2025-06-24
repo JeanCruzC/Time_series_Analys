@@ -50,15 +50,27 @@ serie_last = _df_last.groupby('_dt')[['planificados', 'reales']].sum().sort_inde
 
 # ─────────── 3. Ajustes sugeridos (combinación ponderada) ───────────
 N = 3
-alpha = 0.7
 proxima_sem = ultima_sem + 1
 
+# Parámetros interactivos
+st.subheader("⚙️ Parámetros de Ponderación")
+weight_last = st.slider(
+    "Peso de la última semana (desvío_cur)",
+    min_value=0.0, max_value=1.0, value=0.7, step=0.05
+)
+weight_prev = st.slider(
+    f"Peso del promedio de las últimas {N} semanas (desvío_prev)",
+    min_value=0.0, max_value=1.0, value=0.3, step=0.05
+)
+
+# 3.1 Desvío última semana
 cur = (_df_last
        .groupby(['dia_semana', 'intervalo'])['desvio_%']
        .mean()
        .reset_index()
        .rename(columns={'desvio_%': 'desvio_cur'}))
 
+# 3.2 Promedio de N semanas anteriores
 prev_weeks = sorted(w for w in df['semana_iso'].unique() if w < ultima_sem)[-N:]
 df_prev = df[df['semana_iso'].isin(prev_weeks)]
 prev = (df_prev
@@ -67,15 +79,16 @@ prev = (df_prev
         .reset_index()
         .rename(columns={'desvio_%': 'desvio_prev'}))
 
+# 3.3 Combinación ponderada con sliders
 aj = pd.merge(cur, prev, on=['dia_semana', 'intervalo'], how='left')
 aj['desvio_prev'] = aj['desvio_prev'].fillna(0)
-aj['desvio_comb'] = alpha * aj['desvio_cur'] + (1 - alpha) * aj['desvio_prev']
+aj['desvio_comb'] = weight_last * aj['desvio_cur'] + weight_prev * aj['desvio_prev']
 aj['ajuste_sugerido'] = (1 + aj['desvio_comb'] / 100).round(4).map(lambda x: f"{x*100:.0f}%")
 
 st.subheader(f"📆 Ajustes sugeridos para Semana ISO {proxima_sem}")
 st.markdown(
-    f"**Combinación ponderada:** {int(alpha*100)}% desvío última semana (ISO {ultima_sem}) + "
-    f"{int((1-alpha)*100)}% promedio semanas {prev_weeks}"
+    f"**Combinación ponderada:** {int(weight_last*100)}% desvío última semana (ISO {ultima_sem}) + "
+    f"{int(weight_prev*100)}% promedio semanas {prev_weeks}"
 )
 st.markdown("""
 **Columnas de la tabla**  
@@ -83,14 +96,18 @@ st.markdown("""
 - **intervalo**: franja horaria  
 - **desvio_cur**: desvío % promedio de la última semana  
 - **desvio_prev**: desvío % promedio de las semanas históricas  
-- **desvio_comb**: 0.7·desvio_cur + 0.3·desvio_prev  
+- **desvio_comb**: peso·desvio_cur + peso·desvio_prev  
 - **ajuste_sugerido**: factor de ajuste (100% + desvio_comb)
 """)
 st.dataframe(
     aj[['dia_semana', 'intervalo', 'desvio_cur', 'desvio_prev', 'desvio_comb', 'ajuste_sugerido']],
     use_container_width=True
 )
-st.download_button("📥 Descargar ajustes (.csv)", data=aj.to_csv(index=False).encode(), file_name=f"ajustes_sem_{proxima_sem}.csv")
+st.download_button(
+    "📥 Descargar ajustes (.csv)",
+    data=aj.to_csv(index=False).encode(),
+    file_name=f"ajustes_sem_{proxima_sem}.csv"
+)
 
 # ─────────── 4. KPIs de Error ───────────
 st.subheader("🔢 KPIs de Planificación vs. Realidad")
@@ -167,7 +184,7 @@ if vista == 'Día':
         color_discrete_map={'planificados':'red','reales':'blue'}
     )
     fig.update_layout(hovermode="x unified", dragmode="zoom")
-    fig.update_xaxes(rangeslider_visible=True)
+    fig.update_xaxes(rANGESlider_visible=True)
     st.plotly_chart(fig, use_container_width=True)
 
     decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=48)
@@ -224,10 +241,4 @@ else:  # Mes
                    .mean().reset_index())
     fig = px.line(
         monthly_avg, x='intervalo', y=['planificados','reales'],
-        facet_col='nombre_mes', facet_col_wrap=3,
-        title='📊 Curva horaria promedio diario por Mes',
-        labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo'},
-        color_discrete_map={'planificados':'red','reales':'blue'}
-    )
-    fig.update_layout(hovermode="x unified", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+        facet_col='nombre_mes', facet_col_wrap=
