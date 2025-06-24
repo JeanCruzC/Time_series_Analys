@@ -44,7 +44,7 @@ df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, order
 df['_dt'] = df.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
 serie_continua = df.groupby('_dt')[['planificados','reales']].sum().sort_index()
 
-# ─────────── 2.2 Última semana ───────────
+# ─────────── 2.2 Última semana ┋───────────
 ultima_sem = df['semana_iso'].max()
 _df_last = df[df['semana_iso'] == ultima_sem].copy()
 _df_last['_dt'] = _df_last.apply(lambda r: dt.datetime.combine(r['fecha'], r['intervalo']), axis=1)
@@ -87,16 +87,11 @@ errors = serie_continua.copy() if opcion == "Total" else serie_last.copy()
 errors['error_abs'] = np.abs(errors['reales'] - errors['planificados'])
 errors['MAPE'] = np.abs((errors['reales'] - errors['planificados']) / errors['planificados'].replace(0, np.nan)) * 100
 
-# Construir tabla con planificados, reales, error y MAPE
-errors_tab = errors.reset_index()[['_dt','planificados','reales','error_abs','MAPE']]
-# Formatear MAPE como porcentaje con dos decimales
-errors_tab['MAPE'] = errors_tab['MAPE'].round(2).astype(str) + '%'
-# Explicación de cálculo
+# Tabla con columnas clave
+tab = errors.reset_index()[['_dt','planificados','reales','error_abs','MAPE']]
+tab['MAPE'] = tab['MAPE'].round(2).astype(str) + '%'
 st.markdown("**MAPE calculado como** `abs(reales - planificados) / planificados * 100`")
-st.dataframe(
-    errors_tab.sort_values('MAPE', ascending=False).head(10),
-    use_container_width=True
-)
+st.dataframe(tab.sort_values('MAPE', ascending=False).head(10), use_container_width=True)
 
 # ─────────── 6. Heatmap de desvíos ───────────
 st.subheader("🔥 Heatmap: Desvío % por Intervalo y Día de la Semana")
@@ -144,8 +139,15 @@ elif vista == 'Semana':
     fig_anom.add_scatter(x=anoms.index, y=serie_last.loc[anoms.index,'planificados'], mode='markers', marker=dict(color='red'), name='Anom')
     st.plotly_chart(fig_anom, use_container_width=True)
 else:
+    # Promedio diario por hora para cada mes
     daily_m = df.assign(dia=df['fecha'].dt.date).groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']].sum().reset_index()
     monthly_avg = daily_m.groupby(['nombre_mes','intervalo'])[['planificados','reales']].mean().reset_index()
+    # Serie continua para anomaly detection
+    monthly_avg['hora_str'] = monthly_avg['intervalo'].astype(str).str.slice(0,5)
+    ts = pd.Series(
+        monthly_avg['planificados'].values,
+        index=pd.to_datetime(monthly_avg['hora_str'], format='%H:%M')
+    )
     fig = px.line(
         monthly_avg, x='intervalo', y=['planificados','reales'],
         facet_col='nombre_mes', facet_col_wrap=3, title='📊 Curva Horaria Mes',
@@ -153,7 +155,7 @@ else:
         color_discrete_map={'planificados':'orange','reales':'blue'}
     )
     st.plotly_chart(fig, use_container_width=True)
-    ts = pd.Series(monthly_avg['planificados'].values, index=pd.to_datetime(monthly_avg['intervalo'].astype(str), format='%H:%M'))
+    # Anomalías mensual
     decomp = seasonal_decompose(ts, model='additive', period=24)
     resid = decomp.resid.dropna(); sigma = resid.std(); anoms = resid[np.abs(resid) > 3*sigma]
     fig_anom = px.line(
