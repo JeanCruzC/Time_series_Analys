@@ -33,7 +33,7 @@ df['nombre_mes'] = df['fecha'].dt.strftime('%B')
 df['desvio'] = df['reales'] - df['planificados']
 df['desvio_%'] = (df['desvio'] / df['planificados'].replace(0, np.nan)) * 100
 
-# Orden de días para el heatmap
+# Asegurar orden de días para el heatmap
 dias_orden = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
 df['dia_semana'] = pd.Categorical(df['dia_semana'], categories=dias_orden, ordered=True)
 
@@ -42,15 +42,11 @@ st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ["Día", "Semana", "Mes"])
 
 # ———————————————————————————————————
-# VISTA DÍA: continua por Fecha+Hora
+# VISTA DÍA: curva contínua Fecha+Hora
 # ———————————————————————————————————
 if vista == "Día":
-    # combinamos fecha + hora
     df['dt'] = df.apply(lambda r: datetime.datetime.combine(r['fecha'], r['intervalo']), axis=1)
-    ag = (df.groupby('dt')[['planificados','reales']]
-            .sum()
-            .reset_index()
-          )
+    ag = df.groupby('dt')[['planificados','reales']].sum().reset_index()
     fig = px.line(
         ag, x='dt', y=['planificados','reales'],
         labels={'value':'Volumen','dt':'Fecha y Hora','variable':'Tipo'},
@@ -80,16 +76,12 @@ if vista == "Día":
     )
 
 # ———————————————————————————————————
-# VISTA SEMANA: curva horaria concatenada en una sola serie
+# VISTA SEMANA: totales + curva horaria concatenada
 # ———————————————————————————————————
 elif vista == "Semana":
-    # ─ 3.1 Totales por semana con scroll/zoom ─
-    # obtenemos el lunes de cada semana como timestamp para eje x
+    # 3.1 Totales semanales con zoom & scroll
     df['week_start'] = df['fecha'] - pd.to_timedelta(df['fecha'].dt.weekday, unit='d')
-    weekly = (df.groupby('week_start')[['planificados','reales']]
-                .sum()
-                .reset_index()
-             )
+    weekly = df.groupby('week_start')[['planificados','reales']].sum().reset_index()
     fig_wk = px.line(
         weekly, x='week_start', y=['planificados','reales'],
         labels={'value':'Volumen','week_start':'Semana (lunes)','variable':'Tipo'},
@@ -101,8 +93,8 @@ elif vista == "Semana":
         tickformat='%Y-%m-%d',
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
-            dict(count=2, label="2w", step="week", stepmode="backward"),
-            dict(count=4, label="4w", step="week", stepmode="backward"),
+            dict(count=7,  label="1w", step="day",   stepmode="backward"),
+            dict(count=14, label="2w", step="day",   stepmode="backward"),
             dict(step="all", label="Todo")
         ]),
         type="date", fixedrange=False
@@ -117,19 +109,14 @@ elif vista == "Semana":
         config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]}
     )
 
-    # ─ 3.2 Curva horaria concatenada: una sola serie Día 00:00–23:59,
-    #           pero repetida para todas las semanas en UNC row contínua
-    # calculamos timestamp “lunes + intervalo”
+    # 3.2 Curva horaria concatenada por semana en UNA sola serie
     df['dt_week_hour'] = df.apply(
         lambda r: datetime.datetime.combine(
             (r['fecha'] - pd.to_timedelta(r['fecha'].weekday(), unit='d')).date(),
             r['intervalo']
         ), axis=1
     )
-    weekly_detail = (df.groupby('dt_week_hour')[['planificados','reales']]
-                       .sum()
-                       .reset_index()
-                    )
+    weekly_detail = df.groupby('dt_week_hour')[['planificados','reales']].sum().reset_index()
     fig_wk_detail = px.line(
         weekly_detail, x='dt_week_hour', y=['planificados','reales'],
         labels={'value':'Volumen','dt_week_hour':'Semana – Hora','variable':'Tipo'},
@@ -141,8 +128,8 @@ elif vista == "Semana":
         tickformat='%Y-W%V<br>%H:%M',
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
-            dict(count=1, step="week", label="1w",  stepmode="backward"),
-            dict(count=2, step="week", label="2w",  stepmode="backward"),
+            dict(count=7,  label="1w", step="day", stepmode="backward"),
+            dict(count=14, label="2w", step="day", stepmode="backward"),
             dict(step="all", label="Todo")
         ]),
         type="date", fixedrange=False
@@ -153,7 +140,7 @@ elif vista == "Semana":
         yaxis=dict(fixedrange=False, autorange=True),
         showlegend=False
     )
-    # mostramos leyenda una sola vez
+    # Solo una leyenda
     fig_wk_detail.for_each_trace(
         lambda t: t.update(showlegend=True) if t.name=='reales' else None
     )
@@ -163,15 +150,12 @@ elif vista == "Semana":
     )
 
 # ———————————————————————————————————
-# VISTA MES: similares a la semana, pero sobre mes
+# VISTA MES: totales + detalle horario
 # ———————————————————————————————————
 else:
-    # ─ 3.3 Totales por mes con scroll/zoom ─
+    # 3.3 Totales mensuales con zoom & scroll
     df['month_start'] = df['fecha'].values.astype('datetime64[M]')
-    monthly = (df.groupby('month_start')[['planificados','reales']]
-                 .sum()
-                 .reset_index()
-               )
+    monthly = df.groupby('month_start')[['planificados','reales']].sum().reset_index()
     fig_mon = px.line(
         monthly, x='month_start', y=['planificados','reales'],
         labels={'value':'Volumen','month_start':'Mes','variable':'Tipo'},
@@ -199,14 +183,11 @@ else:
         config={"scrollZoom": True, "modeBarButtonsToAdd":["autoScale2d"]}
     )
 
-    # ─ 3.4 Detalle horario concatenado dentro de mes ─
+    # 3.4 Curva horaria concatenada por mes
     df['dt_month_hour'] = df.apply(
         lambda r: datetime.datetime.combine(r['fecha'].date(), r['intervalo']), axis=1
     )
-    mon_detail = (df.groupby('dt_month_hour')[['planificados','reales']]
-                    .sum()
-                    .reset_index()
-                 )
+    mon_detail = df.groupby('dt_month_hour')[['planificados','reales']].sum().reset_index()
     fig_mon_detail = px.line(
         mon_detail, x='dt_month_hour', y=['planificados','reales'],
         labels={'value':'Volumen','dt_month_hour':'Fecha y Hora','variable':'Tipo'},
@@ -218,8 +199,8 @@ else:
         tickformat='%Y-%m-%d<br>%H:%M',
         rangeslider=dict(visible=True),
         rangeselector=dict(buttons=[
-            dict(count=7, step="day",  label="7d",  stepmode="backward"),
-            dict(count=1, step="month",label="1m",  stepmode="backward"),
+            dict(count=7, label="7d", step="day", stepmode="backward"),
+            dict(count=1, label="1m", step="month", stepmode="backward"),
             dict(step="all", label="Todo")
         ]),
         type="date", fixedrange=False
