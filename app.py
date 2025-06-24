@@ -75,8 +75,8 @@ prev = (
 
 # 3.3 combinación ponderada
 aj = pd.merge(cur, prev, on=['dia_semana','intervalo'], how='left')
-aj['desvio_prev']   = aj['desvio_prev'].fillna(0)
-aj['desvio_comb']   = alpha * aj['desvio_cur'] + (1-alpha) * aj['desvio_prev']
+aj['desvio_prev']     = aj['desvio_prev'].fillna(0)
+aj['desvio_comb']     = alpha * aj['desvio_cur'] + (1-alpha) * aj['desvio_prev']
 aj['ajuste_sugerido'] = (1 + aj['desvio_comb']/100).round(4)
 aj['ajuste_sugerido'] = aj['ajuste_sugerido'].map(lambda x: f"{x*100:.0f}%")
 
@@ -161,10 +161,76 @@ st.pyplot(fig3)
 # ─────────── 7. Vistas interactivas con anomalías ───────────
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ['Día','Semana','Mes'])
+
 if vista == 'Día':
-    # ... resto de tu código para las vistas ...
-    pass
+    fig = px.line(
+        serie_continua.reset_index(), x='_dt', y=['planificados','reales'],
+        title='📅 Contactos Día',
+        labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
+        color_discrete_map={'planificados':'orange','reales':'blue'}
+    )
+    fig.update_layout(hovermode="x unified", dragmode="zoom")
+    fig.update_xaxes(rangeslider_visible=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=48)
+    resid = decomp.resid.dropna()
+    anoms = resid[np.abs(resid) > 3*resid.std()]
+    fig_anom = px.line(
+        serie_continua.reset_index(), x='_dt', y='planificados',
+        title='🔴 Anomalías Día',
+        color_discrete_map={'planificados':'orange'}
+    )
+    fig_anom.add_scatter(
+        x=anoms.index, y=serie_continua.loc[anoms.index,'planificados'],
+        mode='markers', marker=dict(color='red'), name='Anom'
+    )
+    st.plotly_chart(fig_anom, use_container_width=True)
+
 elif vista == 'Semana':
-    pass
-else:
-    pass
+    fig = px.line(
+        serie_last.reset_index(), x='_dt', y=['planificados','reales'],
+        title=f'📆 Contactos Semana ISO {ultima_sem}',
+        labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
+        color_discrete_map={'planificados':'orange','reales':'blue'}
+    )
+    fig.update_layout(hovermode="x unified", dragmode="zoom")
+    fig.update_xaxes(rangeslider_visible=True)
+    st.plotly_chart(fig, use_container_width=True)
+
+    decomp = seasonal_decompose(serie_last['planificados'], model='additive', period=48)
+    resid = decomp.resid.dropna()
+    anoms = resid[np.abs(resid) > 3*resid.std()]
+    fig_anom = px.line(
+        serie_last.reset_index(), x='_dt', y='planificados',
+        title='🔴 Anomalías Semana',
+        color_discrete_map={'planificados':'orange'}
+    )
+    fig_anom.add_scatter(
+        x=anoms.index, y=serie_last.loc[anoms.index,'planificados'],
+        mode='markers', marker=dict(color='red'), name='Anom'
+    )
+    st.plotly_chart(fig_anom, use_container_width=True)
+
+else:  # Mes
+    daily_m = (
+        df.assign(dia=df['fecha'].dt.date)
+          .groupby(['nombre_mes','dia','intervalo'])[['planificados','reales']]
+          .sum()
+          .reset_index()
+    )
+    monthly_avg = (
+        daily_m
+        .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
+        .mean()
+        .reset_index()
+    )
+    fig = px.line(
+        monthly_avg, x='intervalo', y=['planificados','reales'],
+        facet_col='nombre_mes', facet_col_wrap=3,
+        title='📊 Curva Horaria Promedio Diario por Mes',
+        labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo'},
+        color_discrete_map={'planificados':'orange','reales':'blue'}
+    )
+    fig.update_layout(hovermode="x unified", showlegend=False)
+    st.plotly_chart(fig, use_container_width=True)
