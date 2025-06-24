@@ -85,7 +85,6 @@ if vista == "Día":
 # 3.2 VISTA SEMANA: curva horaria promedio diario por semana
 # ────────────────────────────────────────────────
 elif vista == "Semana":
-    # 1) Sumar por día, semana y hora
     daily = (
         df
         .assign(dia=df['fecha'].dt.date)
@@ -93,7 +92,6 @@ elif vista == "Semana":
         .sum()
         .reset_index()
     )
-    # 2) Promediar esos sumarios por semana+hora
     weekly_avg = (
         daily
         .groupby(['semana_iso','intervalo'])[['planificados','reales']]
@@ -135,20 +133,9 @@ elif vista == "Semana":
     )
 
 # ────────────────────────────────────────────────
-# 3.3 VISTA MES: totales + curva horaria promedio diario por mes
+# 3.3 VISTA MES: curva horaria promedio diario por mes
 # ────────────────────────────────────────────────
 else:  # vista == "Mes"
-    # Totales por mes
-    monthly = (
-        df.groupby(['mes','nombre_mes'])[['planificados','reales']]
-          .sum()
-          .reset_index()
-    )
-    monthly['etiqueta'] = monthly['nombre_mes']
-    st.subheader("📊 Totales por Mes")
-    st.dataframe(monthly, use_container_width=True)
-
-    # Curva horaria promedio diario por mes
     daily_month = (
         df
         .assign(dia=df['fecha'].dt.date)
