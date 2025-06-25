@@ -198,6 +198,7 @@ elif vista=='Semana':
     fig_week = px.line(
         melt, x='intervalo', y='Volumen', color='Tipo',
         animation_frame='semana_iso', animation_group='Tipo',
+        color_discrete_map={'planificados':'red','reales':'blue'},
         labels={'intervalo':'Hora','semana_iso':'Semana ISO','Volumen':'Contactos','Tipo':'Tipo'},
         title="📆 Curvas horarias por Semana (promedio)"
     ).update_layout(hovermode="x unified")
