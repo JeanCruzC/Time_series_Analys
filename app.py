@@ -144,6 +144,10 @@ st.dataframe(tab.sort_values('MAPE',ascending=False).head(10), use_container_wid
 
 # ─────────── 6. Heatmap animado ───────────
 st.subheader("🔥 Heatmap animado: Desvío % por Semana ISO")
+
+# 1) Calcular cortes automáticos basados en percentiles
+low, high = df['desvio_%'].quantile([0.05, 0.95])
+
 fig_heat_anim = px.density_heatmap(
     df,
     x='dia_semana',
@@ -158,14 +162,29 @@ fig_heat_anim = px.density_heatmap(
       'intervalo':'Hora',
       'semana_iso':'Semana ISO'
     },
-    text_auto='.1f'  # <--- muestra el valor de desvío en cada celda
+    text_auto='.1f',
+    zmin=low,
+    zmax=high,
 )
+
 fig_heat_anim.update_layout(
-    yaxis={'categoryorder':'array','categoryarray':sorted(df['intervalo'].astype(str).unique())},
-    xaxis={'categoryorder':'array','categoryarray':dias_orden},
-    title="Desvío % por franja horaria y día (animado)"
+    yaxis = {
+        'categoryorder':'array',
+        'categoryarray': sorted(df['intervalo'].astype(str).unique())
+    },
+    xaxis = {
+        'categoryorder':'array',
+        'categoryarray': dias_orden
+    },
+    title = (
+      f"Desvío % por franja horaria y día (animado)<br>"
+      f"(escala cortada al [{low:.1f}%,{high:.1f}%] – "
+      "valores fuera de rango saturan)"
+    )
 )
+
 st.plotly_chart(fig_heat_anim, use_container_width=True)
+
 
 # ─────────── 7. Vista interactiva con anomalías ───────────
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
