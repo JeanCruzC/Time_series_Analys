@@ -56,13 +56,11 @@ st.subheader("⚙️ Parámetros de Ponderación")
 weight_last = st.slider("Peso de la última semana", 0.0, 1.0, 0.7, 0.05)
 weight_prev = st.slider(f"Peso promedio de las últimas {N} semanas", 0.0, 1.0, 0.3, 0.05)
 
-# 3.1 Desvío última semana
 cur = (_df_last
        .groupby(['dia_semana','intervalo'])['desvio_%']
        .mean().reset_index()
        .rename(columns={'desvio_%':'desvio_cur'}))
 
-# 3.2 Promedio de N semanas anteriores
 prev_weeks = sorted(w for w in df['semana_iso'].unique() if w<ultima_sem)[-N:]
 df_prev    = df[df['semana_iso'].isin(prev_weeks)]
 prev = (df_prev
@@ -70,7 +68,6 @@ prev = (df_prev
         .mean().reset_index()
         .rename(columns={'desvio_%':'desvio_prev'}))
 
-# 3.3 Combinación ponderada
 aj = pd.merge(cur, prev, on=['dia_semana','intervalo'], how='left')
 aj['desvio_prev']     = aj['desvio_prev'].fillna(0)
 aj['desvio_comb']     = weight_last*aj['desvio_cur'] + weight_prev*aj['desvio_prev']
@@ -142,11 +139,10 @@ st.dataframe(tab.sort_values('MAPE',ascending=False).head(10), use_container_wid
 
 # ─────────── 6. Heatmap animado ───────────
 st.subheader("🔥 Heatmap animado: Desvío % por Semana ISO")
-# calcular cortes automáticos (5% y 95%)
+# recortes automáticos 5–95 percentil
 low, high = df['desvio_%'].quantile([0.05,0.95])
-
 fig_heat_anim = px.density_heatmap(
-    df,
+    data_frame=df,
     x='dia_semana',
     y='intervalo',
     z='desvio_%',
@@ -161,15 +157,14 @@ fig_heat_anim = px.density_heatmap(
     },
     text_auto='.1f',
     zmin=low,
-    zmax=high,
+    zmax=high
 )
 fig_heat_anim.update_layout(
     yaxis={'categoryorder':'array','categoryarray':sorted(df['intervalo'].astype(str).unique())},
     xaxis={'categoryorder':'array','categoryarray':dias_orden},
     title=(
         f"Desvío % por franja horaria y día (animado)<br>"
-        f"(escala cortada a [{low:.1f}%, {high:.1f}%]; "
-        "valores fuera saturan)"
+        f"(escala limitada a [{low:.1f}%, {high:.1f}%]; valores extremos saturan)"
     )
 )
 st.plotly_chart(fig_heat_anim, use_container_width=True)
@@ -177,11 +172,9 @@ st.plotly_chart(fig_heat_anim, use_container_width=True)
 # ─────────── 7. Vista interactiva con anomalías ───────────
 st.subheader("🔎 Vista interactiva: Día / Semana / Mes")
 vista = st.selectbox("Ver por:", ['Día','Semana','Mes'])
-
 if vista=='Día':
     fig = px.line(
-        serie_continua.reset_index(),
-        x='_dt', y=['planificados','reales'],
+        serie_continua.reset_index(), x='_dt', y=['planificados','reales'],
         title='📅 Contactos Día',
         labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
         color_discrete_map={'planificados':'red','reales':'blue'}
@@ -192,18 +185,12 @@ if vista=='Día':
     decomp = seasonal_decompose(serie_continua['planificados'], model='additive', period=48)
     resid = decomp.resid.dropna(); anoms = resid[np.abs(resid)>3*resid.std()]
     fig_anom = px.line(
-        serie_continua.reset_index(),
-        x='_dt', y='planificados',
-        title='🔴 Anomalías Día',
-        labels={'_dt':'Fecha y Hora','planificados':'Planificados'},
-        color_discrete_map={'planificados':'red'}
+        serie_continua.reset_index(), x='_dt', y='planificados',
+        title='🔴 Anomalías Día', color_discrete_map={'planificados':'red'}
     )
     fig_anom.add_scatter(
-        x=anoms.index,
-        y=serie_continua.loc[anoms.index,'planificados'],
-        mode='markers',
-        marker=dict(color='red'),
-        name='Anomalías'
+        x=anoms.index, y=serie_continua.loc[anoms.index,'planificados'],
+        mode='markers', marker=dict(color='red'), name='Anomalías'
     )
     st.plotly_chart(fig_anom, use_container_width=True)
 
@@ -212,31 +199,12 @@ elif vista=='Semana':
     melt   = weekly.melt(id_vars=['semana_iso','intervalo'], value_vars=['planificados','reales'],
                          var_name='Tipo', value_name='Volumen')
     fig_week = px.line(
-        melt,
-        x='intervalo', y='Volumen', color='Tipo',
+        melt, x='intervalo', y='Volumen', color='Tipo',
         animation_frame='semana_iso', animation_group='Tipo',
         labels={'intervalo':'Hora','semana_iso':'Semana ISO','Volumen':'Contactos','Tipo':'Tipo'},
         title="📆 Curvas horarias por Semana (promedio)"
     ).update_layout(hovermode="x unified")
     st.plotly_chart(fig_week, use_container_width=True)
-
-    decomp_w = seasonal_decompose(serie_last['planificados'], model='additive', period=48)
-    resid_w = decomp_w.resid.dropna(); anoms_w = resid_w[np.abs(resid_w)>3*resid_w.std()]
-    fig_anom_w = px.line(
-        serie_last.reset_index(),
-        x='_dt', y='planificados',
-        title='🔴 Anomalías Semana',
-        labels={'_dt':'Fecha y Hora','planificados':'Planificados'},
-        color_discrete_map={'planificados':'red'}
-    )
-    fig_anom_w.add_scatter(
-        x=anoms_w.index,
-        y=serie_last.loc[anoms_w.index,'planificados'],
-        mode='markers',
-        marker=dict(color='red'),
-        name='Anomalías'
-    )
-    st.plotly_chart(fig_anom_w, use_container_width=True)
 
 else:  # Mes
     daily_m    = df.assign(dia=df['fecha'].dt.date)
@@ -244,8 +212,7 @@ else:  # Mes
                    .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
                    .mean().reset_index())
     fig = px.line(
-        monthly_avg,
-        x='intervalo', y=['planificados','reales'],
+        monthly_avg, x='intervalo', y=['planificados','reales'],
         facet_col='nombre_mes', facet_col_wrap=3,
         title='📊 Curva horaria promedio diario por Mes',
         labels={'intervalo':'Hora','value':'Volumen','variable':'Tipo'},
