@@ -56,35 +56,28 @@ st.subheader("⚙️ Parámetros de Ponderación")
 weight_last = st.slider("Peso de la última semana", 0.0, 1.0, 0.7, 0.05)
 weight_prev = st.slider(f"Peso promedio de las últimas {N} semanas", 0.0, 1.0, 0.3, 0.05)
 
-cur = (
-    _df_last
-    .groupby(['dia_semana', 'intervalo'])['desvio_%']
-    .mean()
-    .reset_index()
-    .rename(columns={'desvio_%': 'desvio_cur'})
-)
+cur = (_df_last
+       .groupby(['dia_semana', 'intervalo'])['desvio_%']
+       .mean()
+       .reset_index()
+       .rename(columns={'desvio_%': 'desvio_cur'}))
 
 prev_weeks = sorted(w for w in df['semana_iso'].unique() if w < ultima_sem)[-N:]
 df_prev = df[df['semana_iso'].isin(prev_weeks)]
-prev = (
-    df_prev
-    .groupby(['dia_semana', 'intervalo'])['desvio_%']
-    .mean()
-    .reset_index()
-    .rename(columns={'desvio_%': 'desvio_prev'})
-)
+prev = (_df_last
+        .groupby(['dia_semana', 'intervalo'])['desvio_%']
+        .mean().reset_index()
+        .rename(columns={'desvio_%': 'desvio_prev'}))
 
 aj = pd.merge(cur, prev, on=['dia_semana', 'intervalo'], how='left')
 aj['desvio_prev'] = aj['desvio_prev'].fillna(0)
 aj['desvio_comb'] = weight_last * aj['desvio_cur'] + weight_prev * aj['desvio_prev']
-aj['ajuste_sugerido'] = (
-    1 + aj['desvio_comb'] / 100
-).round(4).map(lambda x: f"{x*100:.0f}%")
+aj['ajuste_sugerido'] = (1 + aj['desvio_comb'] / 100).round(4).map(lambda x: f"{x*100:.0f}%")
 
 st.subheader(f"📆 Ajustes sugeridos para Semana ISO {proxima_sem}")
 st.markdown(
-    f"**Combinación ponderada:** {int(weight_last*100)}% última semana "
-    f"+ {int(weight_prev*100)}% promedio semanas {prev_weeks}"
+    f"**Combinación ponderada:** {int(weight_last*100)}% última semana + "
+    f"{int(weight_prev*100)}% promedio semanas {prev_weeks}"
 )
 st.dataframe(
     aj[['dia_semana','intervalo','desvio_cur','desvio_prev','desvio_comb','ajuste_sugerido']],
@@ -164,7 +157,8 @@ fig_heat_anim = px.density_heatmap(
       'dia_semana':'Día',
       'intervalo':'Hora',
       'semana_iso':'Semana ISO'
-    }
+    },
+    text_auto='.1f'  # <--- muestra el valor de desvío en cada celda
 )
 fig_heat_anim.update_layout(
     yaxis={'categoryorder':'array','categoryarray':sorted(df['intervalo'].astype(str).unique())},
@@ -204,7 +198,7 @@ elif vista=='Semana':
     fig_week = px.line(
         melt, x='intervalo', y='Volumen', color='Tipo',
         animation_frame='semana_iso', animation_group='Tipo',
-        labels={'intervalo':'Hora','semana_iso':'Semana ISO','Volumen':'Volumen','Tipo':'Tipo'},
+        labels={'intervalo':'Hora','semana_iso':'Semana ISO','Volumen':'Contactos','Tipo':'Tipo'},
         title="📆 Curvas horarias por Semana (promedio)"
     ).update_layout(hovermode="x unified")
     st.plotly_chart(fig_week, use_container_width=True)
@@ -222,9 +216,11 @@ elif vista=='Semana':
 
 else:  # Mes
     daily_m = df.assign(dia=df['fecha'].dt.date)
-    monthly_avg = (daily_m
-                   .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
-                   .mean().reset_index())
+    monthly_avg = (
+        daily_m
+        .groupby(['nombre_mes','intervalo'])[['planificados','reales']]
+        .mean().reset_index()
+    )
     fig = px.line(
         monthly_avg, x='intervalo', y=['planificados','reales'],
         facet_col='nombre_mes', facet_col_wrap=3,
