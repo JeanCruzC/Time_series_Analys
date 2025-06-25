@@ -139,7 +139,6 @@ st.dataframe(tab.sort_values('MAPE',ascending=False).head(10), use_container_wid
 
 # ─────────── 6. Heatmap animado ───────────
 st.subheader("🔥 Heatmap animado: Desvío % por Semana ISO")
-# recortes automáticos 5–95 percentil
 low, high = df['desvio_%'].quantile([0.05,0.95])
 fig_heat_anim = px.density_heatmap(
     data_frame=df,
@@ -149,15 +148,14 @@ fig_heat_anim = px.density_heatmap(
     animation_frame='semana_iso',
     category_orders={'dia_semana':dias_orden},
     color_continuous_scale='RdBu_r',
+    range_color=(low,high),
     labels={
         'desvio_%':'Desvío %',
         'dia_semana':'Día',
         'intervalo':'Hora',
         'semana_iso':'Semana ISO'
     },
-    text_auto='.1f',
-    zmin=low,
-    zmax=high
+    text_auto='.1f'
 )
 fig_heat_anim.update_layout(
     yaxis={'categoryorder':'array','categoryarray':sorted(df['intervalo'].astype(str).unique())},
@@ -178,7 +176,7 @@ if vista=='Día':
         title='📅 Contactos Día',
         labels={'_dt':'Fecha y Hora','value':'Volumen','variable':'Tipo'},
         color_discrete_map={'planificados':'red','reales':'blue'}
-    ).update_layout(hovermode="x unified", dragmode="zoom")
+    ).update_layout(hovermode="x unified", dragmode="zoom")  
     fig.update_xaxes(rangeslider_visible=True)
     st.plotly_chart(fig, use_container_width=True)
 
